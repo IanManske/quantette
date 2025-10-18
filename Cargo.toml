@@ -49,7 +49,7 @@ image = { version = "0.25.0", default-features = false, features = ["jpeg", "png
 clap = { version = "4.3.0", features = ["derive"] }
 rgb = { version = "0.8.36", features = ["as-bytes"] }
 color_quant = "1.1.0"
-imagequant = "4.2.0"
+imagequant = "4.4.1"
 exoquant = "0.2.0"
 dssim = "3.2.4"
 rand = "0.8.5"
