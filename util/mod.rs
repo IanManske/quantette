@@ -1,5 +1,8 @@
 #![allow(dead_code)]
 
+use image::RgbImage;
+use palette::{Oklab, Srgb};
+use quantette::{ImageBuf, IndexedImageCounts, color_space::srgb8_to_oklab_par, dedup};
 use std::{
     cmp::Reverse,
     ffi::OsStr,
@@ -8,14 +11,7 @@ use std::{
     sync::OnceLock,
 };
 
-use image::RgbImage;
-use palette::{IntoColor, Oklab};
-use quantette::IndexedColorCounts;
-
-pub fn load_images<P>(images: &[P]) -> Vec<RgbImage>
-where
-    P: AsRef<Path>,
-{
+pub fn load_images<P: AsRef<Path>>(images: &[P]) -> Vec<RgbImage> {
     images
         .iter()
         .map(|path| image::open(path).unwrap().into_rgb8())
@@ -23,7 +19,7 @@ where
 }
 
 pub fn load_image_dir(dir: impl AsRef<Path>) -> Vec<(PathBuf, RgbImage)> {
-    let mut paths = fs::read_dir(dir.as_ref())
+    let mut paths = fs::read_dir(dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .collect::<Vec<_>>();
@@ -49,13 +45,13 @@ fn root_dir() -> PathBuf {
 
 pub fn load_image_dir_relative_to_root(dir: impl AsRef<Path>) -> Vec<(PathBuf, RgbImage)> {
     let mut root = root_dir();
-    root.push(dir.as_ref());
+    root.push(dir);
     load_image_dir(root)
 }
 
-static BENCHMARK_IMAGES: OnceLock<Vec<(String, RgbImage)>> = OnceLock::new();
+static BENCHMARK_IMAGES: OnceLock<Vec<(String, ImageBuf<Srgb<u8>>)>> = OnceLock::new();
 
-pub fn benchmark_images() -> &'static [(String, RgbImage)] {
+pub fn benchmark_images() -> &'static [(String, ImageBuf<Srgb<u8>>)] {
     BENCHMARK_IMAGES.get_or_init(|| {
         let images = {
             let mut path = root_dir();
@@ -96,31 +92,29 @@ pub fn benchmark_images() -> &'static [(String, RgbImage)] {
                     .display()
                     .to_string();
 
-                (name, img)
+                (name, img.try_into().unwrap())
             })
             .collect()
     })
 }
 
 fn to_oklab_counts(
-    images: &[(String, RgbImage)],
-) -> Vec<(String, IndexedColorCounts<Oklab, f32, 3>)> {
+    images: &[(String, ImageBuf<Srgb<u8>>)],
+) -> Vec<(String, IndexedImageCounts<Oklab, u32>)> {
     images
         .iter()
         .map(|(path, image)| {
-            let counts = IndexedColorCounts::try_from_rgbimage_par(image, |srgb| {
-                srgb.into_linear().into_color()
-            })
-            .unwrap();
-
-            (path.clone(), counts)
+            (
+                path.clone(),
+                dedup::dedup_image_u8_3_counts_par(image.as_ref())
+                    .map(|palette| srgb8_to_oklab_par(&palette)),
+            )
         })
         .collect()
 }
 
-static BENCHMARK_COUNTS: OnceLock<Vec<(String, IndexedColorCounts<Oklab, f32, 3>)>> =
-    OnceLock::new();
+static BENCHMARK_COUNTS: OnceLock<Vec<(String, IndexedImageCounts<Oklab, u32>)>> = OnceLock::new();
 
-pub fn benchmark_counts() -> &'static [(String, IndexedColorCounts<Oklab, f32, 3>)] {
+pub fn benchmark_counts() -> &'static [(String, IndexedImageCounts<Oklab, u32>)] {
     BENCHMARK_COUNTS.get_or_init(|| to_oklab_counts(benchmark_images()))
 }

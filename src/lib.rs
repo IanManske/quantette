@@ -1,118 +1,74 @@
 //! A library for fast and high quality image quantization and palette generation.
 //!
-//! `quantette` can perform quantization in perceptually uniform color spaces like CIELAB and Oklab
-//! for more accurate results.
+//! To get started, see the [`Pipeline`] builder struct which serves as the high-level API.
+//! Otherwise, manually compose functions from the other exported modules to suit your needs.
 //!
 //! # Features
+//!
 //! To reduce dependencies and compile times, `quantette` has several `cargo` features
 //! that can be turned off or on:
-//! - `pipelines`: exposes builder structs that serve as the high-level API (more details below).
-//! - `colorspaces`: allows performing quantization in the CIELAB or Oklab color spaces via the high-level API.
 //! - `kmeans`: adds an additional high quality quantization method that takes longer to run.
 //! - `threads`: exposes parallel versions of most functions via [`rayon`].
 //! - `image`: enables integration with the [`image`] crate.
+//! - `std`: use Rust's standard library (this crate is `no_std` compatible if `threads` and `image` are disabled).
 //!
 //! By default, all features are enabled.
-//!
-//! # High-Level API
-//! To get started with the high-level API, see [`ImagePipeline`].
-//! If you want a color palette instead of a quantized image, see [`PalettePipeline`] instead.
-//! Both of these have examples in their documentation, but here is an additional example:
-//! ```no_run
-//! # use quantette::{ImagePipeline, AboveMaxLen, ColorSpace, QuantizeMethod};
-//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! let img = image::open("some image")?.into_rgb8();
-//!
-//! let quantized = ImagePipeline::try_from(&img)?
-//!     .palette_size(128) // set the max number of colors in the palette
-//!     .dither(false) // turn dithering off
-//!     .colorspace(ColorSpace::Oklab) // use a more accurate color space
-//!     .quantize_method(QuantizeMethod::kmeans()) // use a more accurate quantization algorithm
-//!     .quantized_rgbimage_par(); // run the pipeline in parallel to get a [`RgbImage`]
-//! # Ok(())
-//! # }
-//! ```
-//!
-//! Note that some of the options and functions above require certain features to be enabled.
 //!
 //! All of the color types present in the public API for this crate
 //! (like [`Srgb`](palette::Srgb) or [`Oklab`](palette::Oklab)) are from the [`palette`] crate.
 //! You can check it out for more information. For example, its documentation
 //! should provide you everything you need to know to [cast](palette::cast)
-//! a `Vec<Srgb<u8>>` into a `Vec<[u8; 3]>`.
+//! a `Vec<Srgb<u8>>` into a `Vec<[u8; 3]>` or vice versa.
 
-#![deny(unsafe_code, unsafe_op_in_unsafe_fn)]
 #![warn(
-    clippy::pedantic,
-    clippy::cargo,
-    clippy::use_debug,
-    clippy::dbg_macro,
-    clippy::todo,
-    clippy::unimplemented,
     clippy::unwrap_used,
-    clippy::unwrap_in_result,
     clippy::expect_used,
-    clippy::unneeded_field_pattern,
-    clippy::unnecessary_self_imports,
-    clippy::str_to_string,
-    clippy::string_to_string,
-    clippy::string_slice,
-    missing_docs,
-    clippy::missing_docs_in_private_items,
-    rustdoc::all,
-    clippy::float_cmp_const,
-    clippy::lossy_float_literal
+    clippy::unreachable,
+    clippy::panic,
+    clippy::exit,
+    clippy::unused_result_ok,
+    clippy::print_stdout,
+    clippy::print_stderr,
+    missing_docs
 )]
-#![allow(
-    clippy::doc_markdown,
-    clippy::module_name_repetitions,
-    clippy::many_single_char_names,
-    clippy::missing_panics_doc,
-    clippy::unreadable_literal
-)]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 
-mod color_counts;
-mod dither;
+extern crate alloc;
+#[cfg(any(feature = "std", test))]
+extern crate std;
+
+pub mod color_map;
+pub mod color_space;
+pub mod deps;
+pub mod dither;
+
+mod api;
+mod quantize;
 mod traits;
 mod types;
 
-#[cfg(feature = "pipelines")]
-mod api;
-
-pub mod wu;
-
-#[cfg(feature = "kmeans")]
-pub mod kmeans;
-
-pub use color_counts::*;
-pub use dither::FloydSteinberg;
+pub use api::*;
+pub use quantize::*;
 pub use traits::*;
 pub use types::*;
 
-#[cfg(feature = "pipelines")]
-pub use api::*;
+pub(crate) use color_map::IndexedColorMap;
 
-// Re-export third party crates with types present in our public API
-#[cfg(feature = "image")]
-pub use image;
-#[cfg(any(feature = "pipelines", feature = "image"))]
-pub use palette;
-
-/// The maximum supported image size in number of pixels is `u32::MAX`.
+/// The maximum amount of pixels supported by this library ([`u32::MAX`]).
+///
+/// This applies to all image types as well as pixel slices or buffers.
 pub const MAX_PIXELS: u32 = u32::MAX;
-
-/// The maximum supported number of palette colors is `256`.
-pub const MAX_COLORS: u16 = u8::MAX as u16 + 1;
 
 #[cfg(test)]
 mod tests {
-    use palette::{cast::ComponentsInto, Srgb};
+    use crate::PaletteBuf;
+    use palette::{Srgb, cast::ComponentsInto as _};
 
     #[rustfmt::skip]
-    pub fn test_data_256() -> Vec<Srgb<u8>> {
-        vec![
+    pub fn test_data_256() -> PaletteBuf<Srgb<u8>> {
+        PaletteBuf::new_unchecked(vec![
             225, 173, 56, 117, 245, 55, 13, 86, 86, 74, 28, 233, 43, 1, 65, 174, 92, 158, 167, 92, 86, 68, 33, 246, 170, 140, 121, 207, 120, 147, 120, 70, 173, 153, 247, 69, 238, 26, 203, 224, 234, 37, 58, 138, 40, 107, 124, 149, 134, 22, 68, 211, 246, 164, 193, 60, 109, 0, 92, 174, 107, 129, 157, 122, 70, 195, 159, 138, 134, 157, 164, 90, 17, 40, 44, 47, 129, 100, 92, 230, 49, 157, 9, 216, 189, 162, 111, 155, 134, 74, 139, 60, 80, 7, 144, 66, 122, 5, 69, 227, 111, 252, 110, 59, 49, 70, 106, 43, 61, 249, 80, 24, 91, 39, 1, 212, 222, 110, 148, 110, 7, 157, 8, 253, 94, 57, 153, 228, 71, 0, 185, 151, 140, 179, 254, 60, 101, 7, 162, 214, 43, 15, 161, 235, 49, 176, 66, 102, 61, 250, 50, 219, 109, 91, 246, 238, 188, 33, 107, 72, 85, 16, 40, 44, 249, 62, 181, 234, 199, 90, 149, 75, 20, 72, 34, 227, 227, 29, 205, 228, 106, 176, 21, 202, 223, 73, 51, 39, 173, 118, 163, 159, 26, 80, 51, 140, 189, 93, 113, 25, 79, 149, 238, 65, 34, 43, 22, 232, 225, 18, 126, 7, 175, 125, 54, 27, 39, 12, 180, 93, 173, 176, 52, 160, 7, 187, 161, 220, 236, 127, 132, 7, 19, 36, 188, 121, 113, 214, 20, 6, 140, 52, 14, 93, 123, 148, 42, 254, 9, 159, 208, 118, 36, 245, 173, 70, 88, 192, 106, 209, 24, 72, 189, 8, 231, 199, 228, 48, 200, 209, 231, 18, 105, 5, 220, 19, 118, 47, 78, 229, 201, 210, 17, 20, 74, 203, 158, 70, 77, 14, 57, 119, 195, 158, 121, 71, 12, 209, 228, 216, 122, 144, 212, 204, 65, 210, 56, 190, 225, 111, 149, 172, 124, 200, 63, 123, 134, 9, 38, 0, 57, 54, 140, 78, 203, 76, 42, 133, 202, 8, 141, 107, 10, 144, 80, 220, 183, 236, 129, 44, 251, 188, 109, 173, 174, 38, 190, 8, 250, 243, 134, 61, 150, 82, 19, 254, 74, 56, 8, 218, 78, 136, 44, 63, 103, 207, 166, 144, 20, 104, 21, 245, 14, 104, 128, 202, 229, 7, 181, 116, 124, 127, 154, 34, 100, 186, 94, 142, 201, 89, 227, 98, 36, 192, 72, 9, 221, 95, 237, 105, 205, 106, 126, 145, 246, 162, 12, 96, 137, 9, 117, 66, 77, 19, 251, 137, 70, 237, 77, 36, 175, 127, 63, 165, 76, 88, 122, 118, 92, 190, 33, 81, 142, 175, 166, 9, 194, 198, 99, 3, 118, 12, 68, 169, 247, 151, 212, 87, 21, 107, 92, 200, 200, 9, 36, 212, 3, 38, 166, 163, 154, 123, 179, 72, 60, 253, 96, 235, 126, 186, 218, 132, 216, 87, 26, 43, 247, 233, 192, 54, 153, 192, 215, 59, 17, 68, 87, 103, 197, 11, 93, 179, 168, 12, 212, 10, 188, 241, 26, 94, 229, 240, 170, 133, 44, 88, 16, 121, 22, 251, 184, 87, 209, 97, 210, 190, 212, 61, 84, 233, 134, 230, 139, 226, 30, 145, 183, 117, 35, 70, 118, 197, 55, 173, 8, 174, 192, 216, 48, 10, 58, 189, 81, 80, 89, 79, 228, 42, 159, 202, 86, 183, 37, 200, 86, 153, 108, 79, 135, 51, 167, 149, 185, 145, 36, 146, 95, 244, 130, 135, 106, 89, 99, 65, 125, 224, 236, 41, 105, 226, 126, 164, 128, 223, 248, 49, 172, 107, 90, 66, 79, 215, 230, 51, 234, 109, 128, 43, 90, 135, 36, 121, 244, 51, 240, 145, 145, 185, 19, 115, 9, 72, 218, 119, 81, 42, 22, 15, 98, 132, 42, 211, 190, 115, 131, 198, 221, 189, 196, 92, 155, 23, 163, 0, 244, 188, 217, 64, 248, 141, 203, 226, 195, 6, 230, 51, 191, 12, 198, 181, 138, 33, 60, 11, 165, 191, 184, 193, 14, 86, 216, 167, 73, 9, 49, 169, 237, 16, 70, 196, 121, 252, 39, 71, 69, 156, 83, 174, 139, 175, 82, 9, 248, 25, 208, 201, 190, 86, 157, 214, 170, 246, 211, 168, 166, 227, 126, 89, 153, 204, 118, 220, 223, 228, 76, 104, 47, 53, 77, 45, 79, 91, 241, 178, 31, 45, 156, 244, 23, 120, 163, 61, 76, 68, 193, 144, 249, 110, 167, 103, 215, 201, 66, 143, 101, 237, 82, 173, 171, 67, 248, 126, 53, 223, 75, 186, 86, 196, 227, 129, 210, 56, 13, 18, 69, 13, 124, 162, 178, 141, 108, 174, 153, 212, 166, 14, 173, 112
-        ].components_into()
+        ].components_into())
     }
 
     #[rustfmt::skip]

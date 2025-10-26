@@ -3,40 +3,39 @@
 const examples = 'target/release/examples'
 const cli = ($examples | path join cli)
 const accuracy = ($examples | path join accuracy)
+const images = 'img/unsplash/img/Original'
 const k = 256
 const trials = 30
 
 const methods = [
     [name, cli_args, dither_args];
-    ['Wu - sRGB', [quantette -t 4], [--dither]]
-    ['K-means - Oklab', [quantette -t 4 --kmeans --colorspace oklab], [--dither]]
+    ['Wu (sRGB)', [quantette -t 4 --srgb], null]
+    ['Wu (Oklab)', [quantette -t 4], [--dither]]
+    ['k-means', [quantette -t 4 --kmeans], [--dither]]
     [imagequant, [imagequant -t 4 -q 100], [--dither-level 1.0]]
     [color_quant, [neuquant --sample-frac 10], null]
     [exoquant, [exoquant], [--dither]]
 ]
 
-const images = [
-    Akihabara.jpg
-    Boothbay.jpg
-    Hokkaido.jpg
-    'Jewel Changi.jpg'
-    Louvre.jpg
-]
-
 def main [--dither, --no-dither] {
     let dithers = match [$dither $no_dither] {
-        [true true] => { error make { msg: 'the --dither and --no-dither flags are exclusive' } }
+        [true true] => [false true]
         [true false] => [true]
         [false true] => [false]
         [false false] => [false true]
     }
 
-    cargo b -r --example cli o+e> /dev/null
-    cargo b -r --example accuracy o+e> /dev/null
-
     let output = mktemp -t quantette_benchmark_output.XXX --suffix .png
 
-    let table = $images | wrap Image | insert path {|img| [img unsplash img Original $img.Image] | path join }
+    let table = (
+        ls $images
+        | select name
+        | rename path
+        | insert Image { $in.path | path relative-to $images }
+    )
+
+    cargo b -r --example accuracy o+e> /dev/null
+    RUSTFLAGS='-C target-feature=+avx2' cargo b -r --example cli o+e> /dev/null
 
     for dither in $dithers {
         print (if $dither { '# With Dithering' } else { '# Without Dithering' })
@@ -79,7 +78,7 @@ def main [--dither, --no-dither] {
         $methods
         | reduce -f $table {|method, table|
             $table | insert $method.name {|image|
-                ^$cli $image.path -o $output --verbose -k $k ...$method.cli_args ...$method.dither_args
+                ^$cli $image.path -o $output -k $k ...$method.cli_args ...$method.dither_args
                 ^$accuracy compare $image.path $output | into float | math round -p 6
             }
         }

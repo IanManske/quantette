@@ -12,4 +12,3 @@ extend-ignore-re = [
 
 [default.extend-words]
 "colro" = "color"
-

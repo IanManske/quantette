@@ -1,21 +1,27 @@
-#[path = "../util/util.rs"]
+#[path = "../util/mod.rs"]
 mod util;
 
+use criterion::{
+    Bencher, BenchmarkId, Criterion, SamplingMode, criterion_group, criterion_main,
+    measurement::WallTime,
+};
+use quantette::{
+    PaletteSize,
+    color_space::srgb8_to_oklab_par,
+    dedup,
+    wu::{BinnerF32x3, BinnerU8x3, WuF32x3, WuU8x3},
+};
+use std::time::Duration;
 use util::{benchmark_counts, benchmark_images};
 
-use std::time::Duration;
+// Wu running time scales with image size and is barely affected by palette size.
+const K: PaletteSize = PaletteSize::MAX;
 
-use criterion::{
-    criterion_group, criterion_main, measurement::WallTime, Bencher, BenchmarkId, Criterion,
-    SamplingMode,
-};
-use quantette::{wu, ColorSlice, ColorSpace, PaletteSize};
-
-fn bench<ColorCount>(
+fn bench<T>(
     c: &mut Criterion,
     group: &str,
-    counts: &[(String, ColorCount)],
-    mut f: impl FnMut(&mut Bencher<WallTime>, &(PaletteSize, &ColorCount)),
+    counts: &[(String, T)],
+    mut f: impl FnMut(&mut Bencher<'_, WallTime>, &T),
 ) {
     let mut group = c.benchmark_group(group);
     group
@@ -24,22 +30,9 @@ fn bench<ColorCount>(
         .sampling_mode(SamplingMode::Flat)
         .warm_up_time(Duration::from_millis(500));
 
-    for k in [PaletteSize::MAX, 64.into(), 16.into()] {
-        for (path, counts) in counts {
-            group.bench_with_input(BenchmarkId::new(k.to_string(), path), &(k, counts), &mut f);
-        }
+    for (path, counts) in counts {
+        group.bench_with_input(BenchmarkId::from_parameter(path), counts, &mut f);
     }
-}
-
-fn wu_oklab_palette_single(c: &mut Criterion) {
-    bench(
-        c,
-        "wu_oklab_palette_single",
-        benchmark_counts(),
-        |b, &(k, counts)| {
-            b.iter(|| wu::palette(counts, k, &ColorSpace::default_binner_oklab_f32()))
-        },
-    )
 }
 
 fn wu_srgb_palette_single(c: &mut Criterion) {
@@ -47,13 +40,144 @@ fn wu_srgb_palette_single(c: &mut Criterion) {
         c,
         "wu_srgb_palette_single",
         benchmark_images(),
-        |b, &(k, image)| {
+        |b, image| {
             b.iter(|| {
-                wu::palette(
-                    &ColorSlice::try_from(image).unwrap(),
-                    k,
-                    &ColorSpace::default_binner_srgb_u8(),
-                )
+                WuU8x3::run_image(image.as_ref(), BinnerU8x3::rgb())
+                    .unwrap()
+                    .palette(K)
+            })
+        },
+    )
+}
+
+fn wu_srgb_dedup_palette_single(c: &mut Criterion) {
+    bench(
+        c,
+        "wu_srgb_dedup_palette_single",
+        benchmark_images(),
+        |b, image| {
+            let image = dedup::dedup_image_u8_3_counts_par(image.as_ref());
+            b.iter(|| {
+                WuU8x3::run_indexed_image_counts(&image, BinnerU8x3::rgb())
+                    .unwrap()
+                    .palette(K)
+            })
+        },
+    )
+}
+
+fn wu_srgb_remap_single(c: &mut Criterion) {
+    bench(c, "wu_srgb_remap_single", benchmark_images(), |b, image| {
+        b.iter(|| {
+            let color_map = WuU8x3::run_image(image.as_ref(), BinnerU8x3::rgb())
+                .unwrap()
+                .color_map(K);
+
+            image.map_to_image(color_map)
+        })
+    })
+}
+
+fn wu_srgb_dedup_remap_single(c: &mut Criterion) {
+    bench(
+        c,
+        "wu_srgb_dedup_remap_single",
+        benchmark_images(),
+        |b, image| {
+            let image = dedup::dedup_image_u8_3_counts_par(image.as_ref());
+            b.iter(|| {
+                let color_map = WuU8x3::run_indexed_image_counts(&image, BinnerU8x3::rgb())
+                    .unwrap()
+                    .color_map(K);
+
+                image.map_to_image(color_map)
+            })
+        },
+    )
+}
+
+fn wu_srgb_palette_par(c: &mut Criterion) {
+    bench(c, "wu_srgb_palette_par", benchmark_images(), |b, image| {
+        b.iter(|| {
+            WuU8x3::run_image_par(image.as_ref(), BinnerU8x3::rgb())
+                .unwrap()
+                .palette(K)
+        })
+    })
+}
+
+fn wu_srgb_dedup_palette_par(c: &mut Criterion) {
+    bench(
+        c,
+        "wu_srgb_dedup_palette_par",
+        benchmark_images(),
+        |b, image| {
+            let image = dedup::dedup_image_u8_3_counts_par(image.as_ref());
+            b.iter(|| {
+                WuU8x3::run_indexed_image_counts_par(&image, BinnerU8x3::rgb())
+                    .unwrap()
+                    .palette(K)
+            })
+        },
+    )
+}
+
+fn wu_srgb_remap_par(c: &mut Criterion) {
+    bench(c, "wu_srgb_remap_par", benchmark_images(), |b, image| {
+        b.iter(|| {
+            let color_map = WuU8x3::run_image(image.as_ref(), BinnerU8x3::rgb())
+                .unwrap()
+                .parallel_color_map(K);
+
+            image.map_to_image(color_map)
+        })
+    })
+}
+
+fn wu_srgb_dedup_remap_par(c: &mut Criterion) {
+    bench(
+        c,
+        "wu_srgb_dedup_remap_par",
+        benchmark_images(),
+        |b, image| {
+            let image = dedup::dedup_image_u8_3_counts_par(image.as_ref());
+            b.iter(|| {
+                let color_map = WuU8x3::run_indexed_image_counts_par(&image, BinnerU8x3::rgb())
+                    .unwrap()
+                    .parallel_color_map(K);
+
+                image.map_to_image_par(color_map)
+            })
+        },
+    )
+}
+
+fn wu_oklab_palette_single(c: &mut Criterion) {
+    bench(
+        c,
+        "wu_oklab_palette_single",
+        benchmark_images(),
+        |b, image| {
+            let image = image.map_ref(srgb8_to_oklab_par);
+            b.iter(|| {
+                WuF32x3::run_image(image.as_ref(), BinnerF32x3::oklab_from_srgb8())
+                    .unwrap()
+                    .palette(K)
+            })
+        },
+    )
+}
+
+fn wu_oklab_dedup_palette_single(c: &mut Criterion) {
+    bench(
+        c,
+        "wu_oklab_dedup_palette_single",
+        benchmark_counts(),
+        |b, image| {
+            b.iter(|| {
+                WuF32x3::run_indexed_image_counts(image, BinnerF32x3::oklab_from_srgb8())
+                    .unwrap()
+                    .palette(K)
             })
         },
     )
@@ -63,81 +187,90 @@ fn wu_oklab_remap_single(c: &mut Criterion) {
     bench(
         c,
         "wu_oklab_remap_single",
-        benchmark_counts(),
-        |b, &(k, counts)| {
-            b.iter(|| wu::indexed_palette(counts, k, &ColorSpace::default_binner_oklab_f32()))
+        benchmark_images(),
+        |b, image| {
+            let image = image.map_ref(srgb8_to_oklab_par);
+            b.iter(|| {
+                let color_map = WuF32x3::run_image(image.as_ref(), BinnerF32x3::oklab_from_srgb8())
+                    .unwrap()
+                    .color_map(K);
+
+                image.map_to_image(color_map)
+            })
         },
     )
 }
 
-fn wu_srgb_remap_single(c: &mut Criterion) {
+fn wu_oklab_dedup_remap_single(c: &mut Criterion) {
     bench(
         c,
-        "wu_srgb_remap_single",
-        benchmark_images(),
-        |b, &(k, image)| {
+        "wu_oklab_dedup_remap_single",
+        benchmark_counts(),
+        |b, image| {
             b.iter(|| {
-                wu::indexed_palette(
-                    &ColorSlice::try_from(image).unwrap(),
-                    k,
-                    &ColorSpace::default_binner_srgb_u8(),
-                )
+                let color_map =
+                    WuF32x3::run_indexed_image_counts(image, BinnerF32x3::oklab_from_srgb8())
+                        .unwrap()
+                        .color_map(K);
+
+                image.map_to_image(color_map)
             })
         },
     )
 }
 
 fn wu_oklab_palette_par(c: &mut Criterion) {
-    bench(
-        c,
-        "wu_oklab_palette_par",
-        benchmark_counts(),
-        |b, &(k, counts)| {
-            b.iter(|| wu::palette_par(counts, k, &ColorSpace::default_binner_oklab_f32()))
-        },
-    )
+    bench(c, "wu_oklab_palette_par", benchmark_images(), |b, image| {
+        let image = image.map_ref(srgb8_to_oklab_par);
+        b.iter(|| {
+            WuF32x3::run_image_par(image.as_ref(), BinnerF32x3::oklab_from_srgb8())
+                .unwrap()
+                .palette(K)
+        })
+    })
 }
 
-fn wu_srgb_palette_par(c: &mut Criterion) {
+fn wu_oklab_dedup_palette_par(c: &mut Criterion) {
     bench(
         c,
-        "wu_srgb_palette_par",
-        benchmark_images(),
-        |b, &(k, image)| {
+        "wu_oklab_dedup_palette_par",
+        benchmark_counts(),
+        |b, image| {
             b.iter(|| {
-                wu::palette_par(
-                    &ColorSlice::try_from(image).unwrap(),
-                    k,
-                    &ColorSpace::default_binner_srgb_u8(),
-                )
+                WuF32x3::run_indexed_image_counts_par(image, BinnerF32x3::oklab_from_srgb8())
+                    .unwrap()
+                    .palette(K)
             })
         },
     )
 }
 
 fn wu_oklab_remap_par(c: &mut Criterion) {
-    bench(
-        c,
-        "wu_oklab_remap_par",
-        benchmark_counts(),
-        |b, &(k, counts)| {
-            b.iter(|| wu::indexed_palette_par(counts, k, &ColorSpace::default_binner_oklab_f32()))
-        },
-    )
+    bench(c, "wu_oklab_remap_par", benchmark_counts(), |b, image| {
+        b.iter(|| {
+            let color_map =
+                WuF32x3::run_indexed_image_counts_par(image, BinnerF32x3::oklab_from_srgb8())
+                    .unwrap()
+                    .parallel_color_map(K);
+
+            image.map_to_image_par(color_map)
+        })
+    })
 }
 
-fn wu_srgb_remap_par(c: &mut Criterion) {
+fn wu_oklab_dedup_remap_par(c: &mut Criterion) {
     bench(
         c,
-        "wu_srgb_remap_par",
-        benchmark_images(),
-        |b, &(k, image)| {
+        "wu_oklab_dedup_remap_par",
+        benchmark_counts(),
+        |b, image| {
             b.iter(|| {
-                wu::indexed_palette_par(
-                    &ColorSlice::try_from(image).unwrap(),
-                    k,
-                    &ColorSpace::default_binner_srgb_u8(),
-                )
+                let color_map =
+                    WuF32x3::run_indexed_image_counts_par(image, BinnerF32x3::oklab_from_srgb8())
+                        .unwrap()
+                        .parallel_color_map(K);
+
+                image.map_to_image_par(color_map)
             })
         },
     )
@@ -145,13 +278,21 @@ fn wu_srgb_remap_par(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    wu_oklab_palette_single,
     wu_srgb_palette_single,
-    wu_oklab_remap_single,
+    wu_srgb_dedup_palette_single,
     wu_srgb_remap_single,
-    wu_oklab_palette_par,
+    wu_srgb_dedup_remap_single,
     wu_srgb_palette_par,
-    wu_oklab_remap_par,
+    wu_srgb_dedup_palette_par,
     wu_srgb_remap_par,
+    wu_srgb_dedup_remap_par,
+    wu_oklab_palette_single,
+    wu_oklab_dedup_palette_single,
+    wu_oklab_remap_single,
+    wu_oklab_dedup_remap_single,
+    wu_oklab_palette_par,
+    wu_oklab_dedup_palette_par,
+    wu_oklab_remap_par,
+    wu_oklab_dedup_remap_par,
 );
 criterion_main!(benches);
