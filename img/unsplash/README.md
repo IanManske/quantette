@@ -1,6 +1,4 @@
-The images in the `Original` directory were gathered from [Unsplash](https://unsplash.com/)
-and are available under the [Unsplash License](https://unsplash.com/license).
-The other directories contain the same images resized to different resolutions.
+The images in the `Original` directory were gathered from [Unsplash](https://unsplash.com/) and are available under the [Unsplash License](https://unsplash.com/license). The other directories contain the same images resized to different resolutions.
 
 # Attribution
 

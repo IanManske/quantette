@@ -1,63 +1,23 @@
-#![deny(unsafe_code, unsafe_op_in_unsafe_fn)]
-#![warn(
-    clippy::use_debug,
-    clippy::dbg_macro,
-    clippy::todo,
-    clippy::unimplemented,
-    clippy::unneeded_field_pattern,
-    clippy::unnecessary_self_imports,
-    clippy::str_to_string,
-    clippy::string_to_string,
-    clippy::string_slice
-)]
-
-use std::{fmt::Display, path::PathBuf};
-
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use image::RgbImage;
-use palette::{cast::IntoComponents, Srgb};
+use palette::Srgb;
 use quantette::{
-    ColorSpace, FloydSteinberg, ImagePipeline, KmeansOptions, PaletteSize, QuantizeMethod,
+    Image, IndexedImage, PaletteSize, Pipeline, QuantizeMethod,
+    dither::FloydSteinberg,
+    kmeans::KmeansOptions,
+    wu::{BinnerU8x3, WuU8x3},
 };
-use rayon::prelude::*;
-use rgb::FromSlice;
-
-#[derive(Copy, Clone, ValueEnum)]
-enum CliColorSpace {
-    Oklab,
-    Lab,
-    Srgb,
-}
-
-impl From<CliColorSpace> for ColorSpace {
-    fn from(value: CliColorSpace) -> Self {
-        match value {
-            CliColorSpace::Oklab => ColorSpace::Oklab,
-            CliColorSpace::Lab => ColorSpace::Lab,
-            CliColorSpace::Srgb => ColorSpace::Srgb,
-        }
-    }
-}
-
-impl Display for CliColorSpace {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                CliColorSpace::Oklab => "oklab",
-                CliColorSpace::Lab => "lab",
-                CliColorSpace::Srgb => "srgb",
-            }
-        )
-    }
-}
+use rgb::FromSlice as _;
+use std::path::PathBuf;
 
 #[derive(Subcommand)]
 enum Quantizer {
     Quantette {
-        #[arg(long, default_value_t = CliColorSpace::Srgb)]
-        colorspace: CliColorSpace,
+        #[arg(long)]
+        dedup: Option<bool>,
+
+        #[arg(long)]
+        srgb: bool,
 
         #[arg(long)]
         kmeans: bool,
@@ -68,14 +28,11 @@ enum Quantizer {
         #[arg(long, default_value_t = FloydSteinberg::DEFAULT_ERROR_DIFFUSION)]
         dither_error_diffusion: f32,
 
-        #[arg(short = 'f', long, default_value_t = 0.5)]
+        #[arg(long, default_value_t = KmeansOptions::new().get_sampling_factor())]
         sampling_factor: f32,
 
-        #[arg(long, default_value_t = 4096)]
+        #[arg(long, default_value_t = KmeansOptions::new().get_batch_size())]
         batch_size: u32,
-
-        #[arg(long, default_value_t = 0)]
-        seed: u64,
 
         #[arg(short, long, default_value_t = 0)]
         threads: u8,
@@ -105,7 +62,7 @@ enum Quantizer {
 
 #[derive(Parser)]
 pub struct Options {
-    #[arg(short, long, default_value_t = PaletteSize::default(), value_parser = parse_palette_size)]
+    #[arg(short, long, default_value_t = PaletteSize::MAX, value_parser = parse_palette_size)]
     k: PaletteSize,
 
     #[arg(long)]
@@ -125,6 +82,7 @@ fn parse_palette_size(s: &str) -> Result<PaletteSize, String> {
     value.try_into().map_err(|e| format!("{e}"))
 }
 
+#[allow(clippy::too_many_lines)]
 fn main() {
     let Options { quantizer, k, verbose, input, output } = Options::parse();
 
@@ -145,71 +103,120 @@ fn main() {
 
     match quantizer {
         Quantizer::Quantette {
-            colorspace,
+            srgb: false,
+            dedup,
             dither,
             dither_error_diffusion,
             kmeans,
             sampling_factor,
             batch_size,
-            seed,
             threads,
         } => {
-            let image = image.into_rgb8();
+            let image = Image::try_from(image.into_rgb8()).unwrap();
 
             let method = if kmeans {
                 QuantizeMethod::Kmeans(
                     KmeansOptions::new()
                         .sampling_factor(sampling_factor)
-                        .batch_size(batch_size)
-                        .seed(seed),
+                        .batch_size(batch_size),
                 )
             } else {
-                QuantizeMethod::wu()
+                QuantizeMethod::Wu
             };
 
-            let colorspace = colorspace.into();
-            let mut pipeline = ImagePipeline::try_from(&image).unwrap();
-            let pipeline = pipeline
+            let parallel = threads != 1;
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(if parallel { threads.into() } else { 0 })
+                .build()
+                .unwrap();
+
+            let pipeline = Pipeline::new()
                 .quantize_method(method)
-                .colorspace(colorspace)
-                .dither(dither)
-                .dither_error_diffusion(dither_error_diffusion)
-                .palette_size(k);
+                .palette_size(k)
+                .dedup(dedup)
+                .ditherer(
+                    dither
+                        .then_some(FloydSteinberg::with_error_diffusion(dither_error_diffusion))
+                        .flatten(),
+                )
+                .parallel(parallel);
 
             if let Some(output) = output {
-                let image = log!(
+                let image: RgbImage = log!(
                     "quantization and remapping",
-                    match threads {
-                        0 => pipeline.quantized_rgbimage_par(),
-                        1 => pipeline.quantized_rgbimage(),
-                        t => {
-                            let pool = rayon::ThreadPoolBuilder::new()
-                                .num_threads(t.into())
-                                .build()
-                                .unwrap();
-
-                            pool.install(|| pipeline.quantized_rgbimage_par())
-                        }
-                    }
+                    pool.install(|| pipeline
+                        .input_image(image.as_ref())
+                        .output_srgb8_image()
+                        .into())
                 );
                 log!("write image", image.save(output).unwrap())
             } else {
                 let colors = log!(
                     "quantization",
-                    match threads {
-                        0 => pipeline.palette_par(),
-                        1 => pipeline.palette(),
-                        t => {
-                            let pool = rayon::ThreadPoolBuilder::new()
-                                .num_threads(t.into())
-                                .build()
-                                .unwrap();
-
-                            pool.install(|| pipeline.palette_par())
-                        }
-                    }
+                    pool.install(|| pipeline
+                        .input_slice(image.as_slice())
+                        .unwrap()
+                        .output_srgb8_palette())
                 );
-                print_palette(colors)
+                print_palette(&colors)
+            }
+        }
+        Quantizer::Quantette {
+            srgb: true,
+            dedup,
+            dither,
+            kmeans,
+            threads,
+            ..
+        } => {
+            let image = Image::try_from(image.into_rgb8()).unwrap();
+
+            #[allow(clippy::unimplemented)]
+            if kmeans || dither || dedup.is_some() {
+                unimplemented!("--dither, --kmeans, and --dedup are not compatible with --srgb");
+            }
+
+            let parallel = threads != 1;
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(if parallel { threads.into() } else { 0 })
+                .build()
+                .unwrap();
+
+            if let Some(output) = output {
+                let image: RgbImage = log!(
+                    "quantization and remapping",
+                    pool.install(|| {
+                        let binner = BinnerU8x3::rgb();
+                        if parallel {
+                            let color_map = WuU8x3::run_image_par(image.as_ref(), binner)
+                                .unwrap()
+                                .parallel_color_map(k);
+                            image.map_to_image(color_map)
+                        } else {
+                            let color_map = WuU8x3::run_image(image.as_ref(), binner)
+                                .unwrap()
+                                .color_map(k);
+                            image.map_to_image(color_map)
+                        }
+                        .into()
+                    })
+                );
+                log!("write image", image.save(output).unwrap())
+            } else {
+                let colors = log!(
+                    "quantization",
+                    pool.install(|| {
+                        let binner = BinnerU8x3::rgb();
+                        if parallel {
+                            WuU8x3::run_image_par(image.as_ref(), binner)
+                        } else {
+                            WuU8x3::run_image(image.as_ref(), binner)
+                        }
+                        .unwrap()
+                        .palette(k)
+                    })
+                );
+                print_palette(&colors)
             }
         }
         Quantizer::Neuquant { sample_frac } => {
@@ -219,37 +226,39 @@ fn main() {
 
             if let Some(output) = output {
                 let (nq, indices) = log!("quantization and remapping", {
-                    let nq = NeuQuant::new(sample_frac.into(), k.into_inner().into(), &image);
+                    let nq = NeuQuant::new(sample_frac.into(), k.into(), &image);
 
+                    #[allow(clippy::cast_possible_truncation)]
                     let indices = image
                         .chunks_exact(4)
                         .map(|pix| nq.index_of(pix) as u8)
-                        .collect();
+                        .collect::<Vec<_>>();
 
                     (nq, indices)
                 });
 
-                let colors = nq
+                let palette = nq
                     .color_map_rgba()
                     .chunks_exact(4)
                     .map(|c| Srgb::new(c[0], c[1], c[2]))
-                    .collect();
+                    .collect::<Vec<_>>();
 
-                let image = indexed_image(image.dimensions(), colors, indices);
+                let (width, height) = image.dimensions();
+                let image = indexed_parts_to_rgbimage(width, height, palette, indices);
                 log!("write image", image.save(output).unwrap())
             } else {
                 let nq = log!(
                     "quantization",
-                    NeuQuant::new(sample_frac.into(), k.into_inner().into(), &image)
+                    NeuQuant::new(sample_frac.into(), k.into(), &image)
                 );
 
                 let colors = nq
                     .color_map_rgba()
                     .chunks_exact(4)
                     .map(|c| Srgb::new(c[0], c[1], c[2]))
-                    .collect();
+                    .collect::<Vec<_>>();
 
-                print_palette(colors)
+                print_palette(&colors)
             }
         }
         Quantizer::Imagequant { quality, dither_level, threads } => {
@@ -274,22 +283,23 @@ fn main() {
                 if let Some(quality) = quality {
                     libq.set_quality(0, quality).unwrap();
                 } else {
-                    libq.set_max_colors(k.into_inner().into()).unwrap();
+                    libq.set_max_colors(k.as_u16().into()).unwrap();
                 }
 
                 if let Some(output) = output {
-                    let (colors, indices) = log!("quantization and remapping", {
+                    let (palette, indices) = log!("quantization and remapping", {
                         let mut quantized = libq.quantize(&mut img).unwrap();
                         quantized.set_dithering_level(dither_level).unwrap();
                         quantized.remapped(&mut img).unwrap()
                     });
 
-                    let colors = colors
+                    let palette = palette
                         .into_iter()
                         .map(|c| Srgb::new(c.r, c.g, c.b))
-                        .collect();
+                        .collect::<Vec<_>>();
 
-                    let image = indexed_image(image.dimensions(), colors, indices);
+                    let (width, height) = image.dimensions();
+                    let image = indexed_parts_to_rgbimage(width, height, palette, indices);
                     log!("write image", image.save(output).unwrap())
                 } else {
                     let mut quantized = log!("quantization", libq.quantize(&mut img).unwrap());
@@ -298,15 +308,15 @@ fn main() {
                         .palette()
                         .iter()
                         .map(|c| Srgb::new(c.r, c.g, c.b))
-                        .collect();
+                        .collect::<Vec<_>>();
 
-                    print_palette(colors)
+                    print_palette(&colors)
                 }
             })
         }
         Quantizer::Exoquant { kmeans, dither } => {
             use exoquant::{
-                convert_to_indexed, ditherer, generate_palette, optimizer, Color, SimpleColorSpace,
+                Color, SimpleColorSpace, convert_to_indexed, ditherer, generate_palette, optimizer,
             };
 
             let image = image.into_rgba8();
@@ -318,10 +328,10 @@ fn main() {
 
             let width = image.width() as usize;
 
-            let k = k.into_inner().into();
+            let k = k.into();
 
             if let Some(output) = output {
-                let (colors, indices) = log!(
+                let (palette, indices) = log!(
                     "quantization and remapping",
                     match (kmeans, dither) {
                         (true, true) => convert_to_indexed(
@@ -350,12 +360,13 @@ fn main() {
                     }
                 );
 
-                let colors = colors
+                let palette = palette
                     .into_iter()
                     .map(|c| Srgb::new(c.r, c.g, c.b))
-                    .collect();
+                    .collect::<Vec<_>>();
 
-                let image = indexed_image(image.dimensions(), colors, indices);
+                let (width, height) = image.dimensions();
+                let image = indexed_parts_to_rgbimage(width, height, palette, indices);
                 log!("write image", image.save(output).unwrap())
             } else {
                 let colors = log!(
@@ -380,36 +391,29 @@ fn main() {
                 let colors = colors
                     .into_iter()
                     .map(|c| Srgb::new(c.r, c.g, c.b))
-                    .collect();
+                    .collect::<Vec<_>>();
 
-                print_palette(colors)
+                print_palette(&colors)
             }
         }
     }
 }
 
-fn indexed_image(
-    (width, height): (u32, u32),
+fn indexed_parts_to_rgbimage(
+    width: u32,
+    height: u32,
     palette: Vec<Srgb<u8>>,
     indices: Vec<u8>,
 ) -> RgbImage {
-    let palette = palette.as_slice(); // faster for some reason
-    let buf = indices
-        .par_iter()
-        .map(|&i| palette[usize::from(i)])
-        .collect::<Vec<_>>()
-        .into_components();
-
-    // indices.len() will be equal to width * height,
-    // so buf should be large enough by nature of its construction
-    RgbImage::from_vec(width, height, buf).unwrap()
+    let image = IndexedImage::new(width, height, palette, indices).unwrap();
+    image.to_image_par().into()
 }
 
-fn print_palette(palette: Vec<Srgb<u8>>) {
+fn print_palette(palette: &[Srgb<u8>]) {
     println!(
         "{}",
         palette
-            .into_iter()
+            .iter()
             .map(|color| format!("{color:X}"))
             .collect::<Vec<_>>()
             .join(" ")

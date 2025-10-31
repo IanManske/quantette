@@ -1,23 +1,37 @@
 check:
-  cargo fmt --check
   typos
-  cargo doc --no-deps
-  cargo hack --feature-powerset clippy
+  cargo fmt --check
+  cargo doc --all-features --no-deps
+  cargo hack --rust-version --feature-powerset clippy
+  cargo hack --target wasm32-unknown-unknown --rust-version --feature-powerset --exclude-all-features --skip default,std,threads,image clippy
 
 test:
-  cargo test --doc
+  cargo test --all-features --doc
   cargo test --lib
 
 test-hack:
-  cargo test --doc
-  cargo hack --feature-powerset test --lib
+  cargo test --all-features --doc
+  cargo hack --rust-version --feature-powerset test --lib
 
-plot image *args:
+plot-palette image *args:
   #! /usr/bin/env bash
   set -e
   image="$(realpath "{{image}}")"
   cd '{{justfile_directory()}}/examples/plot'
-  mkdir -p data
-  data='data/{{file_stem(image)}}.dat'
-  cargo run --release --example plot -- "$image" {{args}} > "$data"
-  gnuplot -e "file='$data'" plot.gnuplot
+  data='data/{{file_stem(image)}}'
+  mkdir -p "$data"
+  pixels="$data/pixels.dat"
+  palette="$data/palette.dat"
+  cargo r -r --example plot -- palette "$image" --pixels-output "$pixels" {{args}} > "$palette"
+  gnuplot -e "pixels='$pixels'; palette='$palette'" palette.gnuplot
+
+plot-freq image *args:
+  #! /usr/bin/env bash
+  set -e
+  image="$(realpath "{{image}}")"
+  cd '{{justfile_directory()}}/examples/plot'
+  data='data/{{file_stem(image)}}'
+  mkdir -p "$data"
+  data="$data/freq.dat"
+  cargo r -r --example plot -- freq "$image" {{args}} > "$data"
+  gnuplot -e "data='$data'" freq.gnuplot
