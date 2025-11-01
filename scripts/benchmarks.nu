@@ -3,7 +3,7 @@
 const examples = 'target/release/examples'
 const cli = ($examples | path join cli)
 const accuracy = ($examples | path join accuracy)
-const images = 'img/unsplash/img/Original'
+const images = ['img/unsplash/img/Original' 'img/unsplash/img/1920x1280']
 const k = 256
 const trials = 30
 
@@ -28,10 +28,16 @@ def main [--dither, --no-dither] {
     let output = mktemp -t quantette_benchmark_output.XXX --suffix .png
 
     let table = (
-        ls $images
+        ls ...$images
         | select name
         | rename path
-        | insert Image { $in.path | path relative-to $images }
+        | insert Image { $in.path | path parse | get stem }
+        | insert Dimensions {|img|
+            magick identify $img.path
+            | str substring (($img.path | str length) + 1)..
+            | split row ' '
+            | get 1
+        }
     )
 
     cargo b -r --example accuracy o+e> /dev/null
