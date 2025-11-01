@@ -15,7 +15,7 @@ pub struct CreateImageError {
     width: u32,
     /// The provided image height.
     height: u32,
-    /// The length of `container`.
+    /// The length of the pixel buffer.
     length: usize,
 }
 
@@ -38,14 +38,14 @@ impl fmt::Display for CreateImageError {
 
 impl Error for CreateImageError {}
 
-/// The error returned when an [`Image`] failed to be created. Includes the pixel buffer/container
-/// used to try and create the image.
+/// The error returned when an [`Image`] failed to be created. Includes the pixel buffer used to try
+/// and create the image.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CreateImageBufError<T> {
     /// The underlying error/reason.
     pub error: CreateImageError,
     /// The provided container holding the pixels of the image.
-    pub container: T,
+    pub buffer: T,
 }
 
 impl<T> fmt::Display for CreateImageBufError<T> {
@@ -98,7 +98,7 @@ pub struct Image<Color, Container> {
 /// # }
 /// ```
 ///
-/// Converting a [`RgbImage`](image::RgbImage) from the [`image`] crate to an [`ImageBuf`]:
+/// Converting a [`RgbImage`](image::RgbImage) from the [`image`] crate to an [`ImageBuf`] and vice versa:
 ///
 /// ```
 /// # use quantette::{ImageBuf, CreateImageBufError};
@@ -106,6 +106,7 @@ pub struct Image<Color, Container> {
 /// # fn main() -> Result<(), CreateImageBufError<RgbImage>> {
 /// let image = RgbImage::new(256, 256);
 /// let image = ImageBuf::try_from(image)?;
+/// let image: RgbImage = image.into();
 /// # Ok(())
 /// # }
 /// ```
@@ -251,7 +252,7 @@ impl<Color, Container: AsRef<[Color]>> Image<Color, Container> {
             Ok(Self::new_unchecked(width, height, pixels))
         } else {
             let error = CreateImageError { width, height, length };
-            Err(CreateImageBufError { error, container: pixels })
+            Err(CreateImageBufError { error, buffer: pixels })
         }
     }
 
@@ -518,6 +519,7 @@ where
 #[cfg(feature = "image")]
 mod image_integration {
     use super::{CreateImageBufError, CreateImageError, Image, ImageBuf, ImageMut, ImageRef};
+    use crate::LengthOutOfRange;
     use core::ops::{Deref, DerefMut};
     use image::{ImageBuffer, Pixel, Rgb};
     use palette::{
@@ -568,7 +570,7 @@ mod image_integration {
                     height,
                     length: image.pixels().len(),
                 };
-                Err(CreateImageBufError { error, container: image })
+                Err(CreateImageBufError { error, buffer: image })
             }
         }
     }
@@ -579,23 +581,16 @@ mod image_integration {
         Rgb<Component>: Pixel<Subpixel = Component>,
         Container: Deref<Target = [<Rgb<Component> as Pixel>::Subpixel]>,
     {
-        type Error = CreateImageError;
+        type Error = LengthOutOfRange;
 
         fn try_from(
             image: &'a ImageBuffer<Rgb<Component>, Container>,
         ) -> Result<Self, Self::Error> {
             let (width, height) = image.dimensions();
-            if let Some(len) = width.checked_mul(height) {
-                let slice = &image.as_raw()[..len as usize * 3];
-                let pixels = slice.components_as();
-                Ok(Self::new_unchecked(width, height, pixels))
-            } else {
-                Err(CreateImageError {
-                    width,
-                    height,
-                    length: image.pixels().len(),
-                })
-            }
+            let len = LengthOutOfRange::check_dimensions(width, height)?;
+            let slice = &image.as_raw()[..len as usize * 3];
+            let pixels = slice.components_as();
+            Ok(Self::new_unchecked(width, height, pixels))
         }
     }
 
@@ -605,23 +600,16 @@ mod image_integration {
         Rgb<Component>: Pixel<Subpixel = Component>,
         Container: Deref<Target = [<Rgb<Component> as Pixel>::Subpixel]> + DerefMut,
     {
-        type Error = CreateImageError;
+        type Error = LengthOutOfRange;
 
         fn try_from(
             image: &'a mut ImageBuffer<Rgb<Component>, Container>,
         ) -> Result<Self, Self::Error> {
             let (width, height) = image.dimensions();
-            if let Some(len) = width.checked_mul(height) {
-                let slice = &mut image.deref_mut()[..len as usize * 3];
-                let pixels = slice.components_as_mut();
-                Ok(Self::new_unchecked(width, height, pixels))
-            } else {
-                Err(CreateImageError {
-                    width,
-                    height,
-                    length: image.pixels().len(),
-                })
-            }
+            let len = LengthOutOfRange::check_dimensions(width, height)?;
+            let slice = &mut image.deref_mut()[..len as usize * 3];
+            let pixels = slice.components_as_mut();
+            Ok(Self::new_unchecked(width, height, pixels))
         }
     }
 }

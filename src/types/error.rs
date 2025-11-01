@@ -15,6 +15,20 @@ pub struct LengthOutOfRange {
 }
 
 impl LengthOutOfRange {
+    #[cfg(feature = "image")]
+    #[inline]
+    pub(crate) fn check_dimensions(width: u32, height: u32) -> Result<u32, Self> {
+        if let Some(len) = width.checked_mul(height) {
+            Ok(len)
+        } else {
+            Err(Self {
+                len: width as usize * height as usize,
+                min: 0,
+                max: crate::MAX_PIXELS,
+            })
+        }
+    }
+
     #[inline]
     pub(crate) const fn check_u32<T>(slice: &[T], min: u32, max: u32) -> Result<u32, Self> {
         let len = slice.len();
