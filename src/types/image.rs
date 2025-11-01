@@ -135,9 +135,9 @@ pub type ImageBuf<Color> = Image<Color, Vec<Color>>;
 /// Converting a reference to a [`RgbImage`](image::RgbImage) from the [`image`] crate to an [`ImageRef`]:
 ///
 /// ```
-/// # use quantette::{CreateImageError, ImageRef};
+/// # use quantette::{LengthOutOfRange, ImageRef};
 /// # use image::RgbImage;
-/// # fn main() -> Result<(), CreateImageError> {
+/// # fn main() -> Result<(), LengthOutOfRange> {
 /// let image = RgbImage::new(256, 256);
 /// let image = ImageRef::try_from(&image)?;
 /// # Ok(())
@@ -169,9 +169,9 @@ pub type ImageRef<'a, Color> = Image<Color, &'a [Color]>;
 /// to an [`ImageMut`]:
 ///
 /// ```
-/// # use quantette::{CreateImageError, ImageMut};
+/// # use quantette::{LengthOutOfRange, ImageMut};
 /// # use image::RgbImage;
-/// # fn main() -> Result<(), CreateImageError> {
+/// # fn main() -> Result<(), LengthOutOfRange> {
 /// let mut image = RgbImage::new(256, 256);
 /// let image = ImageMut::try_from(&mut image)?;
 /// # Ok(())
