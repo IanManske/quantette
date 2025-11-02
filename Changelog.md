@@ -1,3 +1,38 @@
+# v0.4.0
+
+This release is a major overhaul of the code and API of `quantette`. The API has been slightly improved and simplified, necessitating breaking changes. Performance should be also be better across the board, varying from minor to significant speedups.
+
+The lists below don't cover every single change, rather only the highlights. See the [docs.rs](https://docs.rs/quantette/latest/quantette/) page to see the new API, docs, and examples.
+
+## New
+
+- Custom palettes can now be provided instead of always generating one from the source image. See `QuantizeMethod::CustomPalette`.
+- In theory, this library is now `no_std` compatible (still needs `alloc` though). The `image`, `threads`, and `std` features must be disabled.
+- A new `color_space` module is available, containing SIMD accelerated conversions between Oklab and sRGB.
+- New structs have been added for color mapping like `NearestNeighborColorMap` and `PaletteSubstitution`.
+
+## Breaking
+
+- The previous `ImagePipeline` and `PalettePipeline` builder structs have been merged into the new `Pipeline` struct. Also, the `pipelines` crate feature has been removed (`Pipeline` is always available).
+- The `colorspaces` crate feature and pipeline option has been removed. All quantization done via the `Pipeline` struct is now performed in the Oklab color space. The underlying quantization methods still support sRGB and other color spaces.
+- There is a new `KmeansOptions` struct that is required by all k-means quantization functions in the new `Kmeans` struct.
+- The API for Wu's quantization method is now handled by two structs: `WuU8x3` and `WuF32x3`.
+- Several new types have been added to clean up the overall API and enforce invariants:
+
+  - `ImageBuf`, `ImageRef`, and `ImageMut`
+  - `PaletteBuf`, `Palette`, and `PaletteCounts`
+  - `IndexedImage` and `IndexedImageCounts`
+
+  Old types like `QuantizationOutput`, `IndexedColorCounts`, and `UniqueColorCounts` have been removed in favor of the ones above.
+
+- Similarly, the new `IndexedColorMap` trait has been added to take the place of the `ColorCountsRemap` and `ColorCountsParallelRemap` traits. All image remapping, including dithering, is now generic over an implementation of `IndexedColorMap`.
+
+## Other
+
+- MSRV is now 1.90.
+- Fixed minimal dependency versions.
+- Updated examples and benchmarks in [docs/](). Note that different hardware and `RUSTFLAGS` were used for the new benchmarks, and so it isn't comparable to previous results.
+
 # v0.3.0
 
 ## Breaking
