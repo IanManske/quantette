@@ -31,7 +31,7 @@ The lists below don't cover every single change, rather only the highlights. See
 
 - MSRV is now 1.90.
 - Fixed minimal dependency versions.
-- Updated examples and benchmarks in [docs/](). Note that different hardware and `RUSTFLAGS` were used for the new benchmarks, and so it isn't comparable to previous results.
+- Updated examples and benchmarks in [docs/](./docs/). Note that different hardware and `RUSTFLAGS` were used for the new benchmarks, and so it isn't comparable to previous results.
 
 # v0.3.0
 
