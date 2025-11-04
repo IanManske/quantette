@@ -211,7 +211,6 @@ impl Pipeline {
     ///
     /// ```
     /// # use quantette::Pipeline;
-    ///
     /// Pipeline::new()
     ///     .dedup(None) // automatically choose whether or not to dedup
     ///     .dedup(true) // always dedup (not recommended if dithering is enabled)
