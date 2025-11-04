@@ -112,7 +112,7 @@ impl KmeansOptions {
         Self { max_samples, ..self }
     }
 
-    /// Sets the number samples to batch together each iteration. This option is only used by the
+    /// Sets the number of samples to batch together each iteration. This option is only used by the
     /// parallel versions of the k-means quantization functions.
     ///
     /// Increasing the batch size reduces the running time but with dimishing returns.

@@ -1,3 +1,8 @@
+# v0.5.0
+
+- Added `output_srgb8_palette_and_counts` and `output_oklab_palette_and_counts` methods to the pipeline structs.
+- Fixed some doc comments.
+
 # v0.4.0
 
 This release is a major overhaul of the code and API of `quantette`. The API has been slightly improved and simplified, necessitating breaking changes. Performance should be also be better across the board, varying from minor to significant speedups.
