@@ -11,6 +11,7 @@ use crate::{
 };
 #[cfg(feature = "threads")]
 use crate::{color_map::NearestNeighborParallelColorMap, color_space::srgb8_to_oklab_par};
+use alloc::vec;
 use bytemuck::Zeroable;
 use palette::{Oklab, Srgb};
 
@@ -364,6 +365,119 @@ impl PipelineWithSliceInput<'_> {
     pub fn output_srgb8_palette(self) -> PaletteBuf<Srgb<u8>> {
         PaletteBuf::from_mapping(&self.output_oklab_palette(), oklab_to_srgb8)
     }
+
+    /// Runs the pipeline and returns the computed [`PaletteBuf<Oklab>`] alongside the number of
+    /// pixels or samples assigned to each palette color.
+    #[allow(clippy::missing_panics_doc)]
+    #[must_use]
+    pub fn output_oklab_palette_and_counts(self) -> (PaletteBuf<Oklab>, PaletteBuf<u32>) {
+        let Self { options, colors } = self;
+        let Pipeline {
+            k,
+            quantize_method,
+            dedup,
+            #[cfg(feature = "threads")]
+            parallel,
+            ..
+        } = options;
+
+        let binner = BinnerF32x3::oklab_from_srgb8();
+
+        #[cfg(feature = "threads")]
+        if parallel {
+            return match quantize_method {
+                QuantizeMethod::CustomPalette(palette) => {
+                    let palette = palette.into_oklab();
+                    let counts = PaletteBuf::new_unchecked(vec![0; palette.len()]);
+                    (palette, counts)
+                }
+                QuantizeMethod::Wu =>
+                {
+                    #[allow(clippy::expect_used)]
+                    if dedup.unwrap_or(colors.len() >= 2048 * 2048) {
+                        let palette_counts = dedup::dedup_colors_u8_3_counts_bounded_par(colors)
+                            .map(|palette| srgb8_to_oklab_par(&palette));
+                        WuF32x3::run_palette_counts_par(&palette_counts, binner)
+                            .expect("deduping a non-empty slice to not result in an empty slice")
+                            .palette_and_counts(k)
+                    } else {
+                        let colors = srgb8_to_oklab_par(colors);
+                        WuF32x3::run_slice_bounded_par(&colors, binner).palette_and_counts(k)
+                    }
+                }
+                #[cfg(feature = "kmeans")]
+                QuantizeMethod::Kmeans(options) => {
+                    if dedup.unwrap_or(colors.len() >= 2048 * 2048) {
+                        let image = ImageRef::new_unchecked(colors.length(), 1, colors);
+                        let image = dedup::dedup_image_u8_3_counts_par(image)
+                            .map(|palette| srgb8_to_oklab_par(&palette));
+                        #[allow(clippy::expect_used)]
+                        let centroids = WuF32x3::run_indexed_image_counts_par(&image, binner)
+                            .expect("deduping a non-empty image to not result in an empty image")
+                            .palette(k);
+                        Kmeans::run_indexed_image_par(image.as_ref(), centroids, options)
+                            .into_palette_and_counts()
+                    } else {
+                        let colors = srgb8_to_oklab_par(colors);
+                        let centroids = WuF32x3::run_slice_bounded_par(&colors, binner).palette(k);
+                        Kmeans::run_slice_par_unchecked(&colors, centroids, options)
+                            .into_palette_and_counts()
+                    }
+                }
+            };
+        }
+
+        match quantize_method {
+            QuantizeMethod::CustomPalette(palette) => {
+                let palette = palette.into_oklab();
+                let counts = PaletteBuf::new_unchecked(vec![0; palette.len()]);
+                (palette, counts)
+            }
+            QuantizeMethod::Wu =>
+            {
+                #[allow(clippy::expect_used)]
+                if dedup.unwrap_or(colors.len() >= 2048 * 2048) {
+                    let palette_counts = dedup::dedup_colors_u8_3_counts_bounded(colors)
+                        .map(|palette| srgb8_to_oklab(&palette));
+                    WuF32x3::run_palette_counts(&palette_counts, binner)
+                        .expect("deduping a non-empty slice to not result in an empty slice")
+                        .palette_and_counts(k)
+                } else {
+                    let colors = srgb8_to_oklab(colors);
+                    let colors = BoundedSlice::new_unchecked(&colors);
+                    WuF32x3::run_slice_bounded(colors, binner).palette_and_counts(k)
+                }
+            }
+            #[cfg(feature = "kmeans")]
+            QuantizeMethod::Kmeans(options) => {
+                if dedup.unwrap_or(colors.len() >= 2048 * 2048) {
+                    let image = ImageRef::new_unchecked(colors.length(), 1, colors);
+                    let image = dedup::dedup_image_u8_3_counts(image)
+                        .map(|palette| srgb8_to_oklab(&palette));
+                    #[allow(clippy::expect_used)]
+                    let centroids = WuF32x3::run_indexed_image_counts(&image, binner)
+                        .expect("deduping a non-empty image to not result in an empty image")
+                        .palette(k);
+                    Kmeans::run_indexed_image(image.as_ref(), centroids, options)
+                        .into_palette_and_counts()
+                } else {
+                    let colors = srgb8_to_oklab(colors);
+                    let colors = BoundedSlice::new_unchecked(&colors);
+                    let centroids = WuF32x3::run_slice_bounded(colors, binner).palette(k);
+                    Kmeans::run_slice_bounded(colors, centroids, options).into_palette_and_counts()
+                }
+            }
+        }
+    }
+
+    /// Runs the pipeline and returns the computed [`PaletteBuf<Srgb<u8>>`] alongside the number of
+    /// pixels or samples assigned to each palette color.
+    #[must_use]
+    pub fn output_srgb8_palette_and_counts(self) -> (PaletteBuf<Srgb<u8>>, PaletteBuf<u32>) {
+        let (palette, counts) = self.output_oklab_palette_and_counts();
+        let palette = PaletteBuf::from_mapping(&palette, oklab_to_srgb8);
+        (palette, counts)
+    }
 }
 
 /// A [`Pipeline`] paired with some image, ready to be quantized or computed into a palette.
@@ -569,6 +683,28 @@ impl<'a> PipelineWithImageRefInput<'a> {
     pub fn output_oklab_palette(self) -> Option<PaletteBuf<Oklab>> {
         self.into_pipeline_with_slice_input()
             .map(PipelineWithSliceInput::output_oklab_palette)
+    }
+
+    /// Runs the pipeline and returns the computed [`PaletteBuf<Srgb<u8>>`] alongside the number of
+    /// pixels or samples assigned to each palette color.
+    ///
+    /// Returns `None` if the input image was empty.
+    #[must_use]
+    pub fn output_srgb8_palette_and_counts(
+        self,
+    ) -> Option<(PaletteBuf<Srgb<u8>>, PaletteBuf<u32>)> {
+        self.into_pipeline_with_slice_input()
+            .map(PipelineWithSliceInput::output_srgb8_palette_and_counts)
+    }
+
+    /// Runs the pipeline and returns the computed [`PaletteBuf<Oklab>`] alongside the number of
+    /// pixels or samples assigned to each palette color.
+    ///
+    /// Returns `None` if the input image was empty.
+    #[must_use]
+    pub fn output_oklab_palette_and_counts(self) -> Option<(PaletteBuf<Oklab>, PaletteBuf<u32>)> {
+        self.into_pipeline_with_slice_input()
+            .map(PipelineWithSliceInput::output_oklab_palette_and_counts)
     }
 
     /// Runs the pipeline and returns the quantized [`IndexedImage<Srgb<u8>>`].
