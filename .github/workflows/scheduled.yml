@@ -26,6 +26,6 @@ jobs:
           tool: cargo-hack@0.6.39
       - run: cargo update
       - run: cargo test --locked --all-features --doc
-      - run: cargo hack --locked --rust-version --feature-powerset test --lib
+      - run: cargo hack --locked --rust-version --feature-powerset --skip default test --lib
         env:
           RUSTFLAGS: -D deprecated

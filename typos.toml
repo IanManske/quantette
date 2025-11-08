@@ -1,7 +1,7 @@
 [files]
 extend-exclude = [
     ".git/",
-    "img/CQ100",
+    "quantette/img/CQ100",
 ]
 ignore-hidden = false
 

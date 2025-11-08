@@ -45,10 +45,12 @@ The lists below don't cover every single change, rather only the highlights. See
 # v0.3.0
 
 ## Breaking
+
 - Removed the option to specify initial centroids in the high-level builder API. This simplified the API and underlying code. If you want to specify initial centroids, then you must now use the low-level API (module functions).
 - The high-level builder structs `ImagePipeline` and `PalettePipeline` are no longer consuming builders. Their various methods now take references to `self` instead of owned `self`s.
 
 ## Other
+
 - Added some `PartialEq` and `Eq` derives to structs and enums.
 - Made some more functions `const`.
 - Eliminated some usages of `unsafe`.
@@ -56,6 +58,7 @@ The lists below don't cover every single change, rather only the highlights. See
 - Updated/expanded documentation.
 
 # v0.2.0
+
 - Add multi-threaded versions of the dither functions.
 - Pixel deduplication through `UniqueColorCounts` and `IndexedColorCounts` should be slightly faster for small images.
 - External crates that have types present in `quantette`'s public API are now reexported (`palette` and `image`).
@@ -65,7 +68,9 @@ The lists below don't cover every single change, rather only the highlights. See
 - Removed unused `wide` feature on `palette` dependency.
 
 # v0.1.1
+
 Fixed typos and reduced unnecessary dependencies.
 
 # v0.1.0
+
 First release!
