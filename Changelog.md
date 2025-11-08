@@ -1,3 +1,7 @@
+# v0.5.1
+
+- Updated `wide` version to fix wasm build on minimal dependency versions.
+
 # v0.5.0
 
 - Added `output_srgb8_palette_and_counts` and `output_oklab_palette_and_counts` methods to the pipeline structs.
