@@ -1,9 +1,9 @@
 check:
   typos
   cargo fmt --check
-  cargo doc --all-features --no-deps
-  cargo hack --rust-version --feature-powerset clippy
-  cargo hack --target wasm32-unknown-unknown --rust-version --feature-powerset --exclude-all-features --skip default,std,threads,image clippy
+  cargo doc --all-features --no-deps --lib
+  cargo hack --rust-version --feature-powerset --skip default clippy
+  cargo hack -p quantette --target wasm32-unknown-unknown --rust-version --feature-powerset --exclude-all-features --skip default,std,threads,image clippy
 
 test:
   cargo test --all-features --doc
@@ -11,7 +11,7 @@ test:
 
 test-hack:
   cargo test --all-features --doc
-  cargo hack --rust-version --feature-powerset test --lib
+  cargo hack --rust-version --feature-powerset --skip default test --lib
 
 plot-palette image *args:
   #! /usr/bin/env bash

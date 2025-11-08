@@ -5,7 +5,9 @@
 
 `quantette` is a library for fast and high quality image quantization and palette generation. It uses the [Oklab](https://bottosson.github.io/posts/oklab) color space for more accurate quantization (but still supports sRGB and other color spaces). `quantette`'s k-means color quantizer gives high quality results while the included Wu color quantizer gives fast but still quite good results.
 
-See [Examples](quantette/docs/Examples.md) for example output images from `quantette` and see [Benchmarks and Accuracy](quantette/docs/Benchmarks%20and%20Accuracy.md) for comparisons with other libraries.
+In some critical locations, `quantette` makes use of SIMD (via the [`wide`](https://crates.io/crates/wide) crate). Consider enabling the `avx` or `avx2` [target features](https://doc.rust-lang.org/reference/conditional-compilation.html#target_feature) for a noticeable speed up if your target architecture supports these features. If the `threads` cargo feature is enabled, multi-threaded versions of most functions become available for even greater speed up.
+
+See [Examples](docs/Examples.md) for example output images from `quantette` and see [Benchmarks and Accuracy](docs/Benchmarks%20and%20Accuracy.md) for comparisons with other libraries.
 
 # License
 

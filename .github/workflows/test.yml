@@ -23,7 +23,7 @@ jobs:
         with:
           tool: cargo-hack@0.6.39
       - run: cargo test --locked --all-features --doc
-      - run: cargo hack --locked --rust-version --feature-powerset test --lib
+      - run: cargo hack --locked --rust-version --feature-powerset --skip default test --lib
 
   minimal:
     name: With minimal dependencies
@@ -41,4 +41,4 @@ jobs:
       - run: cargo hack --remove-dev-deps
       - run: rustup run nightly cargo update -Z minimal-versions
       - run: cargo test --locked --all-features --doc
-      - run: cargo hack --locked --rust-version --feature-powerset test --lib
+      - run: cargo hack --locked --rust-version --feature-powerset --skip default test --lib
