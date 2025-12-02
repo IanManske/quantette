@@ -40,7 +40,7 @@ fn root_dir() -> PathBuf {
         .and_then(Path::parent)
         .and_then(Path::parent)
         .unwrap()
-        .into()
+        .join("quantette")
 }
 
 pub fn load_image_dir_relative_to_root(dir: impl AsRef<Path>) -> Vec<(PathBuf, RgbImage)> {
