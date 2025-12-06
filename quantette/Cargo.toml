@@ -1,8 +1,8 @@
 [package]
 name = "quantette"
 version = "0.5.1"
-rust-version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 description = "Fast and high quality image quantization and palette generation."
 repository = "https://github.com/IanManske/quantette"
 license = "MIT OR Apache-2.0"
