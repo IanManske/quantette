@@ -566,7 +566,6 @@ macro_rules! impl_pipeline {
                 }
             }
         }
-        .unwrap_or_default()
     }};
 }
 
@@ -654,7 +653,6 @@ macro_rules! impl_pipeline_par {
                 }
             }
         }
-        .unwrap_or_default()
     }};
 }
 
@@ -724,7 +722,8 @@ impl<'a> PipelineWithImageRefInput<'a> {
                 remap_indexed_to_indexed_par,
                 remap_image_to_indexed_par,
                 IndexedImage<Oklab>
-            );
+            )
+            .unwrap_or_default();
         }
 
         impl_pipeline!(
@@ -733,6 +732,7 @@ impl<'a> PipelineWithImageRefInput<'a> {
             remap_image_to_indexed,
             IndexedImage<Oklab>
         )
+        .unwrap_or_default()
     }
 
     /// Runs the pipeline and returns the quantized [`ImageBuf<Srgb<u8>>`].
@@ -776,10 +776,11 @@ impl<'a> PipelineWithImageRefInput<'a> {
                 remap_image_to_image_par(image, ditherer, color_map)
             }
 
-            return impl_pipeline_par!(self, remap_indexed, remap_image, ImageBuf<Srgb<u8>>);
+            return impl_pipeline_par!(self, remap_indexed, remap_image, ImageBuf<Srgb<u8>>)
+                .unwrap_or_default();
         }
 
-        impl_pipeline!(self, remap_indexed, remap_image, ImageBuf<Srgb<u8>>)
+        impl_pipeline!(self, remap_indexed, remap_image, ImageBuf<Srgb<u8>>).unwrap_or_default()
     }
 
     /// Runs the pipeline and returns the quantized [`ImageBuf<Oklab>`].
@@ -792,7 +793,8 @@ impl<'a> PipelineWithImageRefInput<'a> {
                 remap_indexed_to_image_par,
                 remap_image_to_image_par,
                 ImageBuf<Oklab>
-            );
+            )
+            .unwrap_or_default();
         }
 
         impl_pipeline!(
@@ -800,6 +802,132 @@ impl<'a> PipelineWithImageRefInput<'a> {
             remap_indexed_to_image,
             remap_image_to_image,
             ImageBuf<Oklab>
+        )
+        .unwrap_or_default()
+    }
+
+    #[allow(clippy::type_complexity)]
+    /// Runs the pipeline and returns the [`PaletteBuf<Srgb<u8>>`] and quantized [`ImageBuf<Srgb<u8>>`].
+    ///
+    /// Returns `None` if the input image was empty.
+    #[must_use]
+    pub fn output_srgb8_palette_and_image(
+        self,
+    ) -> Option<(PaletteBuf<Srgb<u8>>, ImageBuf<Srgb<u8>>)> {
+        fn remap_indexed(
+            image: &IndexedImage<Oklab, u32>,
+            ditherer: Option<FloydSteinberg>,
+            color_map: impl IndexedColorMap<Oklab, Output = Oklab>,
+        ) -> (PaletteBuf<Srgb<u8>>, ImageBuf<Srgb<u8>>) {
+            let color_map = PaletteSubstitution::from_slice_mapping(color_map, oklab_to_srgb8);
+            let image = remap_indexed_to_image(image, ditherer, &color_map);
+            (color_map.into_palette(), image)
+        }
+
+        fn remap_image(
+            image: ImageRef<'_, Oklab>,
+            ditherer: Option<FloydSteinberg>,
+            color_map: impl IndexedColorMap<Oklab, Output = Oklab>,
+        ) -> (PaletteBuf<Srgb<u8>>, ImageBuf<Srgb<u8>>) {
+            let color_map = PaletteSubstitution::from_slice_mapping(color_map, oklab_to_srgb8);
+            let image = remap_image_to_image(image, ditherer, &color_map);
+            (color_map.into_palette(), image)
+        }
+
+        #[cfg(feature = "threads")]
+        if self.options.parallel {
+            fn remap_indexed(
+                image: &IndexedImage<Oklab, u32>,
+                ditherer: Option<FloydSteinberg>,
+                color_map: impl IndexedColorMap<Oklab, Output = Oklab> + Sync,
+            ) -> (PaletteBuf<Srgb<u8>>, ImageBuf<Srgb<u8>>) {
+                let color_map = PaletteSubstitution::from_slice_mapping(color_map, oklab_to_srgb8);
+                let image = remap_indexed_to_image_par(image, ditherer, &color_map);
+                (color_map.into_palette(), image)
+            }
+
+            fn remap_image(
+                image: ImageRef<'_, Oklab>,
+                ditherer: Option<FloydSteinberg>,
+                color_map: impl IndexedColorMap<Oklab, Output = Oklab> + Sync,
+            ) -> (PaletteBuf<Srgb<u8>>, ImageBuf<Srgb<u8>>) {
+                let color_map = PaletteSubstitution::from_slice_mapping(color_map, oklab_to_srgb8);
+                let image = remap_image_to_image_par(image, ditherer, &color_map);
+                (color_map.into_palette(), image)
+            }
+
+            return impl_pipeline_par!(
+                self,
+                remap_indexed,
+                remap_image,
+                (PaletteBuf<Srgb<u8>>, ImageBuf<Srgb<u8>>)
+            );
+        }
+
+        impl_pipeline!(
+            self,
+            remap_indexed,
+            remap_image,
+            (PaletteBuf<Srgb<u8>>, ImageBuf<Srgb<u8>>)
+        )
+    }
+
+    /// Runs the pipeline and returns the [`PaletteBuf<Oklab>`] and quantized [`ImageBuf<Oklab>`].
+    ///
+    /// Returns `None` if the input image was empty.
+    #[must_use]
+    pub fn output_oklab_palette_and_image(self) -> Option<(PaletteBuf<Oklab>, ImageBuf<Oklab>)> {
+        fn remap_indexed(
+            image: &IndexedImage<Oklab, u32>,
+            ditherer: Option<FloydSteinberg>,
+            color_map: impl IndexedColorMap<Oklab, Output = Oklab>,
+        ) -> (PaletteBuf<Oklab>, ImageBuf<Oklab>) {
+            let image = remap_indexed_to_image(image, ditherer, &color_map);
+            (color_map.into_palette(), image)
+        }
+
+        fn remap_image(
+            image: ImageRef<'_, Oklab>,
+            ditherer: Option<FloydSteinberg>,
+            color_map: impl IndexedColorMap<Oklab, Output = Oklab>,
+        ) -> (PaletteBuf<Oklab>, ImageBuf<Oklab>) {
+            let image = remap_image_to_image(image, ditherer, &color_map);
+            (color_map.into_palette(), image)
+        }
+
+        #[cfg(feature = "threads")]
+        if self.options.parallel {
+            fn remap_indexed(
+                image: &IndexedImage<Oklab, u32>,
+                ditherer: Option<FloydSteinberg>,
+                color_map: impl IndexedColorMap<Oklab, Output = Oklab> + Sync,
+            ) -> (PaletteBuf<Oklab>, ImageBuf<Oklab>) {
+                let image = remap_indexed_to_image_par(image, ditherer, &color_map);
+                (color_map.into_palette(), image)
+            }
+
+            fn remap_image(
+                image: ImageRef<'_, Oklab>,
+                ditherer: Option<FloydSteinberg>,
+                color_map: impl IndexedColorMap<Oklab, Output = Oklab> + Sync,
+            ) -> (PaletteBuf<Oklab>, ImageBuf<Oklab>) {
+                let image = remap_image_to_image_par(image, ditherer, &color_map);
+                (color_map.into_palette(), image)
+            }
+
+            return impl_pipeline_par!(
+                self,
+                remap_indexed,
+                remap_image,
+                (PaletteBuf<Oklab>, ImageBuf<Oklab>)
+            );
+        }
+
+        impl_pipeline!(
+            self,
+            remap_indexed,
+            remap_image,
+            (PaletteBuf<Oklab>, ImageBuf<Oklab>)
         )
     }
 }
