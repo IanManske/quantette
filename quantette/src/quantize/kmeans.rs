@@ -99,7 +99,7 @@ impl KmeansOptions {
     ///
     /// The number of samples determined by the [`sampling_factor`](Self::sampling_factor) is
     /// proportional to the input size. However, samples after a certain point will likely not
-    /// affect the results in a significant way, since the k-means quantizition incorporates a
+    /// affect the results in a significant way, since the k-means quantization incorporates a
     /// learning rate that increasingly diminishes the impact of new samples. So, you can use this
     /// option to limit the number samples in the case of a large input.
     ///
