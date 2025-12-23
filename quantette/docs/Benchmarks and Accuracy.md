@@ -1,6 +1,6 @@
 # Benchmarks and Accuracy
 
-Below are some comparisons between `quantette` and some other libraries. Each library has different situations and/or options that can make then perform better or worse, but these limited comparisons should give a rough point of reference. Note that `quantette` currently doesn't support alpha channel/component, while the other libraries do.
+Below are some comparisons between `quantette` and some other libraries. Each library has different situations and/or options that can make them perform better or worse, but these limited comparisons should give a rough point of reference. Note that `quantette` currently doesn't support alpha channel/component, while the other libraries do.
 
 # Setup
 
