@@ -28,7 +28,7 @@ image = ["dep:image", "std"]
 
 [dependencies]
 bitvec = { version = "1.0.1", default-features = false, features = ["alloc"] }
-bytemuck = { version = "1.24.0", features = ["derive", "min_const_generics", "extern_crate_alloc"] }
+bytemuck = { version = "1.25.0", features = ["derive", "min_const_generics", "extern_crate_alloc"] }
 num-traits = { version = "0.2.16", default-features = false, features = [
   "libm",
 ] }
