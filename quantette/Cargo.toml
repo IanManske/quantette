@@ -32,7 +32,7 @@ bytemuck = { version = "1.24.0", features = ["derive", "min_const_generics", "ex
 num-traits = { version = "0.2.16", default-features = false, features = [
   "libm",
 ] }
-ordered-float = { version = "5.1.0", default-features = false }
+ordered-float = { version = "5.3.0", default-features = false }
 libm = { version = "0.2.11", default-features = false }
 wide = { version = "1.0.2", default-features = false }
 palette = { version = "0.7.6", default-features = false, features = [
