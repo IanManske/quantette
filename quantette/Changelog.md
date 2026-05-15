@@ -1,3 +1,10 @@
+# v0.6.0
+
+- Added `output_srgb8_palette_and_image` and `output_oklab_palette_and_image` methods to the `Pipeline` struct.
+- Updated `wide` version to 1.0.2.
+- Updated `rand` version to 0.10.0.
+- Updated `rand_xoshiro` version to 0.8.0.
+
 # v0.5.1
 
 - Updated `wide` version to fix wasm build on minimal dependency versions.
