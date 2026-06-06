@@ -115,9 +115,9 @@ fn find_index([r, g, b]: [u8; 3], lookup: &[[u32; RADIX]; RADIX], blue: &[u8]) -
     let slice: &[u8; RADIX] = blue[i..(i + RADIX)]
         .try_into()
         .expect("slice of exactly length RADIX");
-    let slice: &[[u8; 32]; RADIX / 32] = bytemuck::cast_ref(slice);
     let b = u8x32::splat(b);
-    for (chunk_i, &chunk) in slice.iter().enumerate() {
+    debug_assert_eq!(RADIX % 32, 0); // no chunks remainder
+    for (chunk_i, &chunk) in slice.as_chunks().0.iter().enumerate() {
         let mask = u8x32::new(chunk).simd_eq(b).to_bitmask();
         if mask != 0 {
             #[cfg(target_endian = "big")]
