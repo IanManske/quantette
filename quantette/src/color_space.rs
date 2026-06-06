@@ -172,7 +172,7 @@ pub fn oklab_to_srgb8(input: &[Oklab]) -> Vec<Srgb<u8>> {
     for (&chunk, output) in in_chunks.iter().zip(out_chunks) {
         let lin_srgb = oklab_arr_to_lin_srgb(chunk);
         for (i, output) in output.iter_mut().enumerate() {
-            // TODO: use fast_srgb::f32x4_to_srgb8
+            // TODO: use fast_srgb8::f32x4_to_srgb8
             *output = LinSrgb::new(
                 lin_srgb.red.as_array()[i],
                 lin_srgb.green.as_array()[i],
