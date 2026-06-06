@@ -2,7 +2,7 @@ use crate::{ColorComponents, IndexedColorMap, Palette, PaletteBuf};
 use alloc::vec::Vec;
 use core::{array, marker::PhantomData};
 use palette::cast::{self, AsArrays as _};
-use wide::{CmpLe as _, f32x8, u32x8};
+use wide::{f32x8, u32x8};
 
 /// An [`IndexedColorMap`] that maps input colors to their nearest palette color according to
 /// euclidean distance.

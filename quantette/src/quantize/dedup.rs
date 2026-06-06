@@ -10,7 +10,7 @@ use bitvec::vec::BitVec;
 use bytemuck::Zeroable;
 use core::ops::Range;
 use palette::cast::{self, AsArrays as _};
-use wide::{CmpEq as _, u8x32};
+use wide::u8x32;
 
 /// A byte-sized Radix.
 const RADIX: usize = u8::MAX as usize + 1;

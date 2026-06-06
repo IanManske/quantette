@@ -3,7 +3,7 @@
 use alloc::vec::Vec;
 use core::array;
 use palette::{LinSrgb, Oklab, Srgb, cast};
-use wide::{CmpEq as _, CmpGe as _, CmpLe as _, f32x8, u32x8};
+use wide::{f32x8, u32x8};
 
 // https://bottosson.github.io/posts/oklab/#converting-from-linear-srgb-to-oklab
 
