@@ -71,8 +71,8 @@ pub(crate) fn simd_argmin_min_distance<const N: usize>(
         .reduce(|a, b| a + b)
         .expect("N != 0");
 
-        let mask: u32x8 = bytemuck::cast(distance.simd_le(min_distance));
-        min_chunk = mask.blend(cur_chunk, min_chunk);
+        let mask = distance.simd_le(min_distance).to_bits();
+        min_chunk = mask.select(cur_chunk, min_chunk);
         min_distance = min_distance.fast_min(distance);
         cur_chunk += incr;
     }

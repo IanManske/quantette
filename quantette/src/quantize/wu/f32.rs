@@ -97,8 +97,7 @@ impl<const B1: usize, const B2: usize, const B3: usize> BinnerF32x3<B1, B2, B3> 
         let [b1, b2, b3] = array::from_fn(|i| {
             let bins = (components[i] - mins[i]) * scale[i];
             let bins = bins.trunc_int().max(i32x8::ZERO);
-            let bins: u32x8 = bytemuck::cast(bins);
-            bins.min(max_bins[i])
+            bins.cast_unsigned().min(max_bins[i])
         });
 
         #[allow(clippy::cast_possible_truncation)]
