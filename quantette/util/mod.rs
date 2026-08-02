@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::unwrap_used, reason = "benchmark code")]
 
 use image::RgbImage;
 use palette::{Oklab, Srgb};

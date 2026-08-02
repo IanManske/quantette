@@ -140,6 +140,10 @@ impl<Color> PaletteCounts<Color> {
         self.total_count
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "not sure a custom type will help here, as it would need 2 generics"
+    )]
     /// Replace the palette of a [`PaletteCounts`] to a different color type (or to new colors
     /// of the same type).
     ///
@@ -148,7 +152,6 @@ impl<Color> PaletteCounts<Color> {
     /// If the length of the provided `palette` does not match the length of the current palette
     /// in the [`PaletteCounts`], then `self` and `palette` are returned as an `Err`. Otherwise,
     /// the new [`PaletteCounts`] is returned alongside the old palette.
-    #[allow(clippy::type_complexity)]
     #[inline]
     pub fn replace_palette<NewColor>(
         self,

@@ -53,7 +53,8 @@ where
 pub(crate) fn simd_argmin_min_distance<const N: usize>(
     data: &[[f32x8; N]],
     color: [f32; N],
-) -> ((u8, u8), f32) {
+) -> (u8, f32) {
+    debug_assert!(data.len() <= 256 / 8);
     let incr = u32x8::ONE;
     let mut cur_chunk = u32x8::ZERO;
     let mut min_chunk = cur_chunk;
@@ -62,7 +63,7 @@ pub(crate) fn simd_argmin_min_distance<const N: usize>(
     let color = color.map(f32x8::splat);
 
     for chunk in data {
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "N is const and will fail loudly")]
         let distance = array::from_fn::<_, N, _>(|i| {
             let diff = color[i] - chunk[i];
             diff * diff
@@ -87,11 +88,12 @@ pub(crate) fn simd_argmin_min_distance<const N: usize>(
     }
 
     let min_chunk = min_chunk.as_array()[min_lane];
-
-    #[allow(clippy::cast_possible_truncation)]
-    {
-        ((min_chunk as u8, min_lane as u8), min_dist)
-    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "asserted len of data above"
+    )]
+    let index = min_chunk as u8 * 8 + min_lane as u8;
+    (index, min_dist)
 }
 
 impl<Color, Component, const N: usize> NearestNeighborColorMap<Color, Component, N>
@@ -102,10 +104,7 @@ where
     /// Compute the index of the nearest palette color to `color` according to euclidean distance.
     #[inline]
     fn map_to_index(&self, color: &Color) -> u8 {
-        let (chunk, lane) =
-            simd_argmin_min_distance(&self.data, cast::into_array(*color).map(Into::into)).0;
-
-        chunk * 8 + lane
+        simd_argmin_min_distance(&self.data, cast::into_array(*color).map(Into::into)).0
     }
 
     /// Replace a slice of colors with their nearest palette color according to euclidean distance.
@@ -354,11 +353,10 @@ mod tests {
                 .unwrap()
                 .0;
 
-            let ((chunk, lane), actual2) = simd_argmin_min_distance(&nearest.data, color);
-            let index = usize::from(chunk) * 8 + usize::from(lane);
-            let actual1 = squared_euclidean_distance(color, centroids[index]);
+            let (index, actual2) = simd_argmin_min_distance(&nearest.data, color);
+            let actual1 = squared_euclidean_distance(color, centroids[usize::from(index)]);
 
-            #[allow(clippy::float_cmp)]
+            #[expect(clippy::float_cmp, reason = "test")]
             {
                 assert_eq!(expected, actual1);
                 assert_eq!(expected, actual2);

@@ -77,10 +77,15 @@ impl<T> BoundedSlice<T> {
         #[inline]
         const fn cast<T>(slice: &[T]) -> &BoundedSlice<T>;
 
-        #[cfg_attr(target_pointer_width = "32", allow(clippy::absurd_extreme_comparisons))]
-        {
-            debug_assert!(Self::MIN_LEN <= slice.len() && slice.len() <= Self::MAX_LEN);
-        }
+        #[cfg_attr(
+            target_pointer_width = "32",
+            expect(
+                clippy::absurd_extreme_comparisons,
+                reason = "usize cannot exceed max length if 32 bit"
+            )
+        )]
+        (debug_assert!(Self::MIN_LEN <= slice.len() && slice.len() <= Self::MAX_LEN));
+
         cast(slice)
     }
 
@@ -100,10 +105,15 @@ impl<T> BoundedSlice<T> {
         #[inline]
         const fn cast_mut<T>(slice: &mut [T]) -> &mut BoundedSlice<T>;
 
-        #[cfg_attr(target_pointer_width = "32", allow(clippy::absurd_extreme_comparisons))]
-        {
-            debug_assert!(Self::MIN_LEN <= slice.len() && slice.len() <= Self::MAX_LEN);
-        }
+        #[cfg_attr(
+            target_pointer_width = "32",
+            expect(
+                clippy::absurd_extreme_comparisons,
+                reason = "usize cannot exceed max length if 32 bit"
+            )
+        )]
+        (debug_assert!(Self::MIN_LEN <= slice.len() && slice.len() <= Self::MAX_LEN));
+
         cast_mut(slice)
     }
 
@@ -117,11 +127,11 @@ impl<T> BoundedSlice<T> {
     }
 
     /// Returns the length of a [`BoundedSlice`] as a `u32`.
-    #[allow(clippy::cast_possible_truncation)]
     #[must_use]
     #[inline]
     pub const fn length(&self) -> u32 {
-        self.as_slice().len() as u32
+        #[expect(clippy::cast_possible_truncation, reason = "invariant")]
+        (self.as_slice().len() as u32)
     }
 
     /// Convert a [`BoundedSlice`] to a regular slice.

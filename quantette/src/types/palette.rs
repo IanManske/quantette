@@ -117,7 +117,7 @@ impl PaletteSize {
     #[inline]
     pub const fn try_from_usize(value: usize) -> Option<Self> {
         if value <= Self::MAX.as_usize() {
-            #[allow(clippy::cast_possible_truncation)]
+            #[expect(clippy::cast_possible_truncation, reason = "guarded by if")]
             if let Some(len) = NonZeroU16::new(value as u16) {
                 Some(Self::new_unchecked(len))
             } else {
@@ -158,7 +158,7 @@ impl PaletteSize {
     #[inline]
     pub const fn from_usize_clamped(value: usize) -> Self {
         if value <= Self::MAX.as_usize() {
-            #[allow(clippy::cast_possible_truncation)]
+            #[expect(clippy::cast_possible_truncation, reason = "guarded by if")]
             if let Some(len) = NonZeroU16::new(value as u16) {
                 Self::new_unchecked(len)
             } else {
@@ -181,8 +181,12 @@ impl PaletteSize {
         }
     }
 
+    #[expect(
+        clippy::expect_used,
+        clippy::missing_panics_doc,
+        reason = "compiler removes the `expect` with opt_level=3"
+    )]
     /// Create a [`PaletteSize`] from a [`NonZeroU8`].
-    #[allow(clippy::expect_used, clippy::missing_panics_doc)] // compiler removes the `expect` with opt_level=3
     #[must_use]
     #[inline]
     pub const fn from_nz_u8(len: NonZeroU8) -> Self {
@@ -429,14 +433,18 @@ impl<T> Palette<T> {
         Self::new_mut_unchecked(array.as_mut_slice())
     }
 
+    #[expect(clippy::missing_panics_doc, reason = "expect should never trigger")]
     /// Returns the length of a [`Palette`] as a [`PaletteSize`].
-    #[allow(clippy::missing_panics_doc)]
     #[must_use]
     #[inline]
     pub const fn size(&self) -> PaletteSize {
         let len = self.as_slice().len();
         debug_assert!(Self::MIN_LEN <= len && len <= Self::MAX_LEN);
-        #[allow(clippy::expect_used, clippy::cast_possible_truncation)]
+        #[expect(
+            clippy::expect_used,
+            clippy::cast_possible_truncation,
+            reason = "invariant"
+        )]
         let size = NonZeroU16::new(len as u16).expect("non-empty palette");
         PaletteSize::new_unchecked(size)
     }

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::print_stdout, reason = "example code")]
+
 use clap::{Parser, Subcommand};
 use image::RgbImage;
 use palette::Srgb;
@@ -82,7 +84,7 @@ fn parse_palette_size(s: &str) -> Result<PaletteSize, String> {
     value.try_into().map_err(|e| format!("{e}"))
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "example code")]
 fn main() {
     let Options { quantizer, k, verbose, input, output } = Options::parse();
 
@@ -171,9 +173,9 @@ fn main() {
         } => {
             let image = Image::try_from(image.into_rgb8()).unwrap();
 
-            #[allow(clippy::unimplemented)]
             if kmeans || dither || dedup.is_some() {
-                unimplemented!("--dither, --kmeans, and --dedup are not compatible with --srgb");
+                #[expect(clippy::unimplemented, reason = "example code")]
+                (unimplemented!("--dither, --kmeans, and --dedup are not compatible with --srgb"));
             }
 
             let parallel = threads != 1;
@@ -228,10 +230,12 @@ fn main() {
                 let (nq, indices) = log!("quantization and remapping", {
                     let nq = NeuQuant::new(sample_frac.into(), k.into(), &image);
 
-                    #[allow(clippy::cast_possible_truncation)]
                     let indices = image
                         .chunks_exact(4)
-                        .map(|pix| nq.index_of(pix) as u8)
+                        .map(|pix| {
+                            #[expect(clippy::cast_possible_truncation, reason = "PaletteSize")]
+                            (nq.index_of(pix) as u8)
+                        })
                         .collect::<Vec<_>>();
 
                     (nq, indices)

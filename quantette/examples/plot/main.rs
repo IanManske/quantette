@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, reason = "example code")]
+
 use clap::{Parser, Subcommand, ValueEnum};
 use quantette::{
     ImageBuf, PaletteSize,
@@ -81,7 +83,7 @@ struct Cli {
     plot: Plot,
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "example code")]
 fn main() -> Result<(), Box<dyn Error>> {
     let Cli { plot } = Cli::parse();
 

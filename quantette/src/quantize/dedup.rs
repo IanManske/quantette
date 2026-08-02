@@ -36,7 +36,7 @@ fn chunked_u8_counts<const CHUNKS: usize>(
         counts[0][usize::from(r)] += 1;
     }
 
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "CHUNKS is const and will fail loudly")]
     let (counts, partial_counts) = counts.split_first_mut().expect("CHUNKS != 0");
     for i in 0..RADIX {
         for partial in &*partial_counts {
@@ -66,7 +66,7 @@ fn dedup_colors_u8_3_bounded<Color: ColorComponents<u8, 3>>(
         let r = i / (RADIX * RADIX);
         let g = i % (RADIX * RADIX) / RADIX;
         let b = i % (RADIX * RADIX) % RADIX;
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation, reason = "bitmask length above")]
         let color = cast::from_array([r as u8, g as u8, b as u8]);
         colors.push(color);
     }
@@ -93,15 +93,14 @@ pub fn dedup_colors_u8_3<Color: ColorComponents<u8, 3>>(
 /// Create a lookup table for the starting index of each chunk of colors that have the same two
 /// first bytes.
 fn create_prefix_lookup(palette: &[[u8; 3]]) -> Box<[[u32; RADIX]; RADIX]> {
+    debug_assert!(u32::try_from(palette.len()).is_ok());
     let mut lookup = bytemuck::zeroed_box::<[[u32; RADIX]; RADIX]>();
     let mut i = 0;
     for chunk in palette.chunk_by(|&[r1, g1, _], &[r2, g2, _]| r1 == r2 && g1 == g2) {
         let [r, g, _] = chunk[0];
         lookup[usize::from(r)][usize::from(g)] = i;
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            i += chunk.len() as u32;
-        }
+        #[expect(clippy::cast_possible_truncation, reason = "manually validated")]
+        (i += chunk.len() as u32);
     }
     lookup
 }
@@ -111,7 +110,7 @@ fn create_prefix_lookup(palette: &[[u8; 3]]) -> Box<[[u32; RADIX]; RADIX]> {
 fn find_index([r, g, b]: [u8; 3], lookup: &[[u32; RADIX]; RADIX], blue: &[u8]) -> u32 {
     let index = lookup[usize::from(r)][usize::from(g)];
     let i = index as usize;
-    #[allow(clippy::expect_used)]
+    #[expect(clippy::expect_used, reason = "range has length RADIX")]
     let slice: &[u8; RADIX] = blue[i..(i + RADIX)]
         .try_into()
         .expect("slice of exactly length RADIX");
@@ -122,14 +121,12 @@ fn find_index([r, g, b]: [u8; 3], lookup: &[[u32; RADIX]; RADIX], blue: &[u8]) -
         if mask != 0 {
             #[cfg(target_endian = "big")]
             let mask = mask.swap_bytes();
-            #[allow(clippy::cast_possible_truncation)]
+            #[expect(clippy::cast_possible_truncation, reason = "slice has length RADIX")]
             return chunk_i as u32 * 32 + mask.trailing_zeros() + index;
         }
     }
-    #[allow(clippy::unreachable)]
-    {
-        unreachable!("target byte should exist")
-    }
+    #[expect(clippy::panic, reason = "bug")]
+    (panic!("target byte should exist"))
 }
 
 /// Calculate the palette indices for each pixel.
@@ -214,7 +211,7 @@ pub(crate) fn dedup_colors_u8_3_counts_bounded<Color: ColorComponents<u8, 3>>(
                 for i in bitmask.iter_ones() {
                     let g = i / RADIX;
                     let b = i % RADIX;
-                    #[allow(clippy::cast_possible_truncation)]
+                    #[expect(clippy::cast_possible_truncation, reason = "bitmask length above")]
                     let color = cast::from_array([r as u8, g as u8, b as u8]);
                     colors.push(color);
                     counts.push(lower_counts[g][b]);
@@ -230,7 +227,10 @@ pub(crate) fn dedup_colors_u8_3_counts_bounded<Color: ColorComponents<u8, 3>>(
                 for (g, count) in lower_counts.iter().enumerate() {
                     for (b, &count) in count.iter().enumerate() {
                         if count > 0 {
-                            #[allow(clippy::cast_possible_truncation)]
+                            #[expect(
+                                clippy::cast_possible_truncation,
+                                reason = "g and b are indices for arrays with length RADIX"
+                            )]
                             let color = cast::from_array([r as u8, g as u8, b as u8]);
                             colors.push(color);
                             counts.push(count);
@@ -297,8 +297,11 @@ mod parallel {
     use palette::cast::{self, AsArrays as _};
     use rayon::prelude::*;
 
+    #[expect(
+        unsafe_code,
+        reason = "somewhat tested and the performance gains are quite large"
+    )]
     /// Unsafe utilities for sharing data across multiple threads.
-    #[allow(unsafe_code)]
     mod sync_unsafe {
         #[cfg(test)]
         use core::sync::atomic::{AtomicBool, Ordering};
@@ -402,7 +405,6 @@ mod parallel {
                 let mut buffer = bytemuck::zeroed_box::<[[[u8; 2]; BUF_LEN as usize]; RADIX]>();
                 let mut lengths = [0u8; RADIX];
 
-                #[allow(unsafe_code)]
                 for &[r, g, b] in chunk {
                     let r = usize::from(r);
                     let len = lengths[r];
@@ -411,6 +413,7 @@ mod parallel {
                         let j = i as usize;
                         // Safety: prefix sums ensure that each location in green_blue is written to only once
                         // and is therefore safe to write to without any form of synchronization.
+                        #[expect(unsafe_code, reason = "safety comment and somewhat tested")]
                         unsafe {
                             gb.write_slice(j..(j + usize::from(BUF_LEN)), &buffer[r]);
                         }
@@ -422,7 +425,6 @@ mod parallel {
                     buffer[r][usize::from(len)] = [g, b];
                     lengths[r] = len + 1;
                 }
-                #[allow(unsafe_code)]
                 for (r, buf) in buffer.iter().enumerate() {
                     let len = lengths[r];
                     let i = red_prefix[r] - u32::from(len);
@@ -430,6 +432,7 @@ mod parallel {
                     let j = i as usize;
                     // Safety: prefix sums ensure that each location in green_blue is written to only once
                     // and is therefore safe to write to without any form of synchronization.
+                    #[expect(unsafe_code, reason = "safety comment and somewhat tested")]
                     unsafe {
                         gb.write_slice(j..(j + len), &buf[..len]);
                     }
@@ -471,7 +474,7 @@ mod parallel {
                     for i in bitmask.iter_ones() {
                         let g = i / RADIX;
                         let b = i % RADIX;
-                        #[allow(clippy::cast_possible_truncation)]
+                        #[expect(clippy::cast_possible_truncation, reason = "bitmask length above")]
                         let color = cast::from_array([r as u8, g as u8, b as u8]);
                         colors.push(color);
                     }
@@ -579,7 +582,10 @@ mod parallel {
                         for i in bitmask.iter_ones() {
                             let g = i / RADIX;
                             let b = i % RADIX;
-                            #[allow(clippy::cast_possible_truncation)]
+                            #[expect(
+                                clippy::cast_possible_truncation,
+                                reason = "bitmask length above"
+                            )]
                             let color = cast::from_array([r as u8, g as u8, b as u8]);
                             colors.push(color);
                             counts.push(lower_counts[g][b]);
@@ -592,7 +598,10 @@ mod parallel {
                         for (g, count) in lower_counts.iter().enumerate() {
                             for (b, &count) in count.iter().enumerate() {
                                 if count > 0 {
-                                    #[allow(clippy::cast_possible_truncation)]
+                                    #[expect(
+                                        clippy::cast_possible_truncation,
+                                        reason = "g and b are indices for arrays with length RADIX"
+                                    )]
                                     let color = cast::from_array([r as u8, g as u8, b as u8]);
                                     colors.push(color);
                                     counts.push(count);
@@ -684,14 +693,13 @@ mod tests {
         }
     }
 
-    #[allow(clippy::cast_possible_truncation)]
     fn image_1d<T: AsRef<[U]>, U>(container: T) -> Image<U, T> {
+        #[expect(clippy::cast_possible_truncation, reason = "test code")]
         Image::new_unchecked(container.as_ref().len() as u32, 1, container)
     }
 
-    #[allow(clippy::too_many_lines)]
+    #[expect(clippy::too_many_lines, reason = "test code")]
     fn add_duplicate_color_with_data(colors: Vec<Srgb<u8>>) {
-        #[allow(clippy::cast_possible_truncation)]
         fn index_of(colors: &[Srgb<u8>], color: Srgb<u8>) -> usize {
             colors.iter().position(|&c| c == color).unwrap()
         }
@@ -718,7 +726,10 @@ mod tests {
             let (palette, mut indices) = image.into_parts();
             let i = index_of(&palette, duplicate);
             counts[i] += 1;
-            #[allow(clippy::cast_possible_truncation)]
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "IndexedImageCounts invariant"
+            )]
             indices.push(i as u32);
             IndexedImageCounts::new_unchecked(
                 width.checked_add(1).unwrap(),
@@ -751,7 +762,7 @@ mod tests {
             let (palette, mut indices) = image.into_parts();
             let i = index_of(&palette, duplicate);
             counts[i] += 1;
-            #[allow(clippy::cast_possible_truncation)]
+            #[expect(clippy::cast_possible_truncation, reason = "IndexedImage invariant")]
             indices.push(i as u32);
             IndexedImageCounts::new_unchecked(
                 width.checked_add(1).unwrap(),
@@ -779,7 +790,10 @@ mod tests {
                 let (palette, mut indices) = image.into_parts();
                 let i = index_of(&palette, duplicate);
                 counts[i] += 1;
-                #[allow(clippy::cast_possible_truncation)]
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "IndexedImageCounts invariant"
+                )]
                 indices.push(i as u32);
                 IndexedImageCounts::new_unchecked(
                     width.checked_add(1).unwrap(),
@@ -813,7 +827,7 @@ mod tests {
                 let (palette, mut indices) = image.into_parts();
                 let i = index_of(&palette, duplicate);
                 counts[i] += 1;
-                #[allow(clippy::cast_possible_truncation)]
+                #[expect(clippy::cast_possible_truncation, reason = "IndexedImage invariant")]
                 indices.push(i as u32);
                 IndexedImageCounts::new_unchecked(
                     width.checked_add(1).unwrap(),

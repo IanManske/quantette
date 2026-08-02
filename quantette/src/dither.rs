@@ -485,8 +485,11 @@ impl FloydSteinberg {
 
 #[cfg(feature = "threads")]
 mod parallel {
-    #[allow(clippy::wildcard_imports)]
-    use super::*;
+    use super::{
+        ErrorBuf, FloydSteinberg, dither_image_to_image, dither_image_to_indexed,
+        dither_indexed_to_image, dither_indexed_to_indexed, dither_pixel_indexed_map,
+        dither_pixel_map,
+    };
     use crate::{BoundedIndex, ColorComponents, ImageBuf, ImageRef, IndexedColorMap, IndexedImage};
     use bytemuck::Zeroable;
     use rayon::prelude::*;
@@ -744,10 +747,6 @@ mod parallel {
     }
 }
 
-#[cfg(feature = "threads")]
-#[allow(unused_imports)]
-pub use parallel::*;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -814,8 +813,12 @@ mod tests {
         let palette = PaletteBuf::from_mapping(&test_data_256(), srgb8_to_oklab);
         let color_map = NearestNeighborColorMap::new(palette.clone());
         let indices = {
-            #[allow(clippy::cast_possible_truncation)]
-            let indices = (0..palette.len()).map(|i| i as u8).collect::<Vec<_>>();
+            let indices = (0..palette.len())
+                .map(|i| {
+                    #[expect(clippy::cast_possible_truncation, reason = "PalettBuf length")]
+                    (i as u8)
+                })
+                .collect::<Vec<_>>();
             let mut indices = [indices.as_slice(); 4].concat();
             indices.rotate_right(7);
             indices

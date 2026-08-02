@@ -32,8 +32,8 @@ impl LengthOutOfRange {
     #[inline]
     pub(crate) const fn check_u32<T>(slice: &[T], min: u32, max: u32) -> Result<u32, Self> {
         let len = slice.len();
-        #[allow(clippy::cast_possible_truncation)]
         if min as usize <= len && len <= max as usize {
+            #[expect(clippy::cast_possible_truncation, reason = "guarded by if")]
             Ok(len as u32)
         } else {
             Err(Self { len, min, max })
@@ -43,8 +43,8 @@ impl LengthOutOfRange {
     #[inline]
     pub(crate) const fn check_u16<T>(slice: &[T], min: u16, max: u16) -> Result<u16, Self> {
         let len = slice.len();
-        #[allow(clippy::cast_possible_truncation)]
         if min as usize <= len && len <= max as usize {
+            #[expect(clippy::cast_possible_truncation, reason = "guarded by if")]
             Ok(len as u16)
         } else {
             Err(Self { len, min: min as u32, max: max as u32 })

@@ -218,10 +218,8 @@ impl<const B1: usize, const B2: usize, const B3: usize> Histogram3<u8, B1, B2, B
             for r in min[0]..max[0] {
                 for g in min[1]..max[1] {
                     for b in min[2]..max[2] {
-                        #[allow(clippy::cast_possible_truncation)] // See assert above.
-                        {
-                            hist[[r, g, b]] = i as u8;
-                        }
+                        #[expect(clippy::cast_possible_truncation, reason = "assert above")]
+                        (hist[[r, g, b]] = i as u8);
                     }
                 }
             }
@@ -244,7 +242,7 @@ impl<T: Zero + Copy + AddAssign, const B1: usize, const B2: usize, const B3: usi
 {
     /// Create moments from the histogram bins to allow inclusion-exclusion lookups/calculations.
     pub fn calc_cumulative_moments(&mut self) {
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation, reason = "const assert on creation")]
         for r in 0..(B1 as u8) {
             let area = &mut [T::zero(); B3];
 
@@ -273,8 +271,11 @@ impl<T, const B1: usize, const B2: usize, const B3: usize> Histogram3<T, B1, B2,
 where
     T: AddAssign + Copy,
 {
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "matches reduce type signature"
+    )]
     /// Merge multiple [`Histogram3`]s together by element-wise summing their histogram bins together.
-    #[allow(clippy::needless_pass_by_value)]
     pub fn merge_partial(mut a: Self, b: Self) -> Self {
         for (a, &b) in a.as_flattened_mut().iter_mut().zip(b.as_flattened()) {
             *a += b;
@@ -335,8 +336,8 @@ impl<T, const B1: usize, const B2: usize, const B3: usize> InclusionExclusion<T,
 where
     T: Copy + Zero + Add<Output = T> + Sub<Output = T>,
 {
-    #[allow(clippy::cast_possible_truncation)]
     fn dims(&self) -> [u8; 3] {
+        #[expect(clippy::cast_possible_truncation, reason = "const assert on creation")]
         [B1, B2, B3].map(|b| b as u8)
     }
 
@@ -364,7 +365,7 @@ where
                     index[2] = bin;
                     ndvolume!(self, min, max, index; 0, 1)
                 }
-                #[allow(clippy::panic)]
+                #[expect(clippy::panic, reason = "bug")]
                 _ => panic!("dim must be < 3"),
             }
         }
@@ -395,7 +396,8 @@ where
 {
     /// Create a new [`Wu`] from a histogram.
     #[inline]
-    pub fn new(hist: Hist) -> Self {
+    pub const fn new(hist: Hist) -> Self {
+        const { assert!(N <= u8::MAX as usize) }
         Self {
             hist,
             color: PhantomData,
@@ -432,7 +434,7 @@ where
     fn cut(&self, cube: Cube<N>) -> Option<(Cube<N>, Cube<N>)> {
         let sum = self.volume(cube);
 
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation, reason = "const assert on creation")]
         (0..(N as u8))
             .filter_map(|dim| {
                 let d = usize::from(dim);
@@ -479,8 +481,10 @@ where
         queue.push(CubeVar(whole_cube, f64::INFINITY));
 
         while queue.len() < k {
-            // there should always be one cube, since at least one cube is added back for each popped
-            #[allow(clippy::expect_used)]
+            #[expect(
+                clippy::expect_used,
+                reason = "at least one cube is added back for each popped"
+            )]
             let CubeVar(cube, variance) = queue.pop().expect("at least one cube");
 
             if variance.partial_cmp(&0.0).is_none_or(Ordering::is_le) {

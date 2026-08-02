@@ -45,10 +45,10 @@ impl BinnerU8x3<16, 32, 16> {
 }
 
 impl<const B1: usize, const B2: usize, const B3: usize> BinnerU8x3<B1, B2, B3> {
-    #[allow(clippy::unused_self)] // Force calls to `new`.
-    #[allow(clippy::trivially_copy_pass_by_ref)] // See comment below.
-    #[inline]
+    #[expect(clippy::unused_self, reason = "forces calls to `new`")]
+    #[expect(clippy::trivially_copy_pass_by_ref, reason = "see comment below")]
     /// Returns the histogram bins for each color component.
+    #[inline]
     fn bin(&self, components: &[u8; 3]) -> [u8; 3] {
         // Noticeably different assembly is generated depending on whether `components`
         // is passed by value or by reference. Passing by reference results in "cleaner" assembly
@@ -783,9 +783,11 @@ mod tests {
         };
 
         let indices = {
-            #[allow(clippy::cast_possible_truncation)]
             let indices = (0..expected_palette.len())
-                .map(|i| i as u8)
+                .map(|i| {
+                    #[expect(clippy::cast_possible_truncation, reason = "PalettBuf length")]
+                    (i as u8)
+                })
                 .collect::<Box<_>>();
             let mut indices = [indices.as_ref(); COUNT as usize].concat();
             indices.rotate_right(7);
@@ -852,11 +854,11 @@ mod tests {
         fn unwrap_hist<const B1: usize, const B2: usize, const B3: usize>(
             hist: &Hist<B1, B2, B3>,
         ) -> &[Stats<u32, 3, u64>] {
-            #[allow(clippy::unimplemented)]
             if let Hist::U32(hist) = hist {
                 hist.as_flattened()
             } else {
-                unimplemented!()
+                #[expect(clippy::unimplemented, reason = "test code")]
+                (unimplemented!())
             }
         }
 
@@ -873,10 +875,8 @@ mod tests {
         {
             assert_eq!(a.count, b.count);
             assert_eq!(a.components, b.components);
-            #[allow(clippy::float_cmp)]
-            {
-                assert_eq!(a.sum_squared, b.sum_squared);
-            }
+            #[expect(clippy::float_cmp, reason = "test")]
+            (assert_eq!(a.sum_squared, b.sum_squared));
         }
 
         let single = wu_single.palette_and_counts(palette_size);
