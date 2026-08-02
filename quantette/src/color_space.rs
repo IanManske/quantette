@@ -34,7 +34,11 @@ fn cbrt(x: f32x8) -> f32x8 {
     const MU: f64 = 0.049593534765;
     const BIAS: f64 = (f32::MAX_EXP - 1) as f64;
     const EXP_SHIFT: f64 = (1 << (f32::MANTISSA_DIGITS - 1)) as f64;
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "constant"
+    )]
     const C: u32 = ((BIAS - BIAS / 3.0 - MU * 2.0 / 3.0) * EXP_SHIFT) as u32;
 
     // We assume the input was originally converted from Srgb<u8> and so is within certain ranges.
@@ -65,9 +69,13 @@ fn cbrt(x: f32x8) -> f32x8 {
     x.simd_eq(0.0).select(x, a)
 }
 
+#[expect(clippy::excessive_precision, reason = "matching oklab source")]
+#[expect(
+    clippy::inline_always,
+    reason = "around 15-40% slow down if not inlined"
+)]
 /// Convert [`LinSrgb`] to [`Oklab`] using SIMD.
-#[allow(clippy::excessive_precision, clippy::inline_always)]
-#[inline(always)] // around 15-40% slow down if not inlined
+#[inline(always)]
 fn lin_srgb_to_oklab(lin_srgb: LinSrgb<f32x8>) -> Oklab<f32x8> {
     let (r, g, b) = lin_srgb.into_components();
 
@@ -86,8 +94,8 @@ fn lin_srgb_to_oklab(lin_srgb: LinSrgb<f32x8>) -> Oklab<f32x8> {
     Oklab { l, a, b }
 }
 
+#[expect(clippy::inline_always, reason = "slow down if not inlined")]
 /// Convert a [`LinSrgb`] with [`f32x8`] components to an array of [`Oklab`] values.
-#[allow(clippy::inline_always)]
 #[inline(always)]
 fn lin_srgb_to_oklab_arr(lin_srgb: LinSrgb<f32x8>) -> [Oklab; 8] {
     let Oklab { l, a, b } = lin_srgb_to_oklab(lin_srgb);
@@ -130,8 +138,9 @@ pub fn srgb8_to_oklab(input: &[Srgb<u8>]) -> Vec<Oklab> {
     output
 }
 
+#[expect(clippy::excessive_precision, reason = "matching oklab source")]
+#[expect(clippy::inline_always, reason = "slow down if not inlined")]
 /// Convert [`Oklab`] to [`LinSrgb`] using SIMD.
-#[allow(clippy::excessive_precision, clippy::inline_always)]
 #[inline(always)]
 fn oklab_to_lin_srgb(oklab: Oklab<f32x8>) -> LinSrgb<f32x8> {
     let Oklab { l, a, b } = oklab;
@@ -151,9 +160,9 @@ fn oklab_to_lin_srgb(oklab: Oklab<f32x8>) -> LinSrgb<f32x8> {
     LinSrgb::new(r, g, b)
 }
 
+#[expect(clippy::inline_always, reason = "around 5-7% slow down if not inlined")]
 /// Convert an [`Oklab`] with [`f32x8`] components to an array of [`LinSrgb`] values.
-#[allow(clippy::excessive_precision, clippy::inline_always)]
-#[inline(always)] // around 5-7% slowdown if not inlined
+#[inline(always)]
 fn oklab_arr_to_lin_srgb(oklab: [Oklab; 8]) -> LinSrgb<f32x8> {
     let oklab = cast::into_array_array(oklab);
     let oklab: [[f32; 8]; 3] = core::array::from_fn(|i| oklab.map(|x| x[i]));
@@ -301,7 +310,7 @@ mod tests {
         for r in 0..=u8::MAX {
             for g in 0..=u8::MAX {
                 for b in (0..=u8::MAX).step_by(8) {
-                    #[allow(clippy::cast_possible_truncation)]
+                    #[expect(clippy::cast_possible_truncation, reason = "array index")]
                     let lin_srgb: [_; 8] =
                         array::from_fn(|i| Srgb::new(r, g, b + i as u8).into_linear());
 
@@ -326,7 +335,7 @@ mod tests {
     #[test]
     #[ignore = "takes a long time"]
     fn srgb8_to_oklab_roundtrip() {
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation, reason = "array index")]
         let mut srgb: [_; 256 * 256] =
             array::from_fn(|i| Srgb::new(0, (i / 256) as u8, (i % 256) as u8));
 

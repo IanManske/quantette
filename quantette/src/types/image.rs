@@ -257,10 +257,10 @@ impl<Color, Container: AsRef<[Color]>> Image<Color, Container> {
     }
 
     /// Returns the number of pixels in the [`Image`] specified by `width * height`.
-    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     pub fn num_pixels(&self) -> u32 {
-        self.pixels.as_ref().len() as u32
+        #[expect(clippy::cast_possible_truncation, reason = "invariant")]
+        (self.pixels.as_ref().len() as u32)
     }
 
     /// Returns a reference to the underlying pixels as a slice.
@@ -277,7 +277,10 @@ impl<Color, Container: AsRef<[Color]>> Image<Color, Container> {
     }
 
     /// Convert an [`Image`] to an owned [`ImageBuf`].
-    #[allow(clippy::missing_panics_doc)]
+    ///
+    /// # Panics
+    ///
+    /// Panics if `Container`'s implementation of [`ToOwned`] changes the length of the container as a slice.
     #[must_use]
     #[inline]
     pub fn to_owned(&self) -> Image<Color, Container::Owned>
@@ -537,9 +540,9 @@ mod image_integration {
         Rgb<Component>: Pixel<Subpixel = Component>,
         Vec<Component>: Deref<Target = [<Rgb<Component> as Pixel>::Subpixel]>,
     {
-        #[allow(clippy::expect_used)]
         fn from(image: ImageBuf<Srgb<Component>>) -> Self {
             let Image { width, height, pixels, .. } = image;
+            #[expect(clippy::expect_used, reason = "invariant")]
             ImageBuffer::from_raw(width, height, pixels.into_components())
                 .expect("buffer is large enough")
         }
@@ -613,7 +616,3 @@ mod image_integration {
         }
     }
 }
-
-#[cfg(feature = "image")]
-#[allow(unused_imports)]
-pub use image_integration::*;

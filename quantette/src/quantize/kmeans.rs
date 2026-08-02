@@ -170,7 +170,11 @@ impl KmeansOptions {
         if len == 0 || self.batch_size == 0 {
             None
         } else {
-            #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+            #[expect(
+                clippy::cast_sign_loss,
+                clippy::cast_possible_truncation,
+                reason = "garbage in, garbage out"
+            )]
             let samples = (f64::from(len) * f64::from(self.sampling_factor.0)) as u32;
             NonZeroU32::new(samples.min(self.max_samples))
         }
@@ -206,16 +210,15 @@ where
         State { nearest, counts }
     }
 
-    /// Add a color to the centroid at the given `chunk` and `lane`.
+    /// Add a color to the centroid at the given `index`.
     #[inline]
-    fn add_sample_to(&mut self, chunk: u8, lane: u8, color: [f32; N]) {
+    fn add_sample_to(&mut self, index: u8, color: [f32; N]) {
         let Self { nearest, counts, .. } = self;
 
-        let i = chunk * 8 + lane;
-
-        let count = counts[usize::from(i)] + 1;
+        let index = usize::from(index);
+        let count = counts[index] + 1;
         // We use a learning rate of 0.5 => count^(-0.5)
-        #[allow(clippy::cast_possible_truncation)]
+        #[expect(clippy::cast_possible_truncation, reason = "count is positive")]
         let rate = {
             #[cfg(feature = "std")]
             {
@@ -227,20 +230,22 @@ where
             }
         };
 
-        for (c, x) in nearest.data[usize::from(chunk)].iter_mut().zip(color) {
-            let c = &mut c.as_mut_array()[usize::from(lane)];
+        let chunk = index / 8;
+        let lane = index % 8;
+        for (c, x) in nearest.data[chunk].iter_mut().zip(color) {
+            let c = &mut c.as_mut_array()[lane];
             *c += rate * (x - *c);
         }
 
-        counts[usize::from(i)] = count;
+        counts[index] = count;
     }
 
     /// Add a color to its nearest centroid.
     #[inline]
     fn add_sample(&mut self, color: [Component; N]) {
         let color = color.map(Into::into);
-        let (chunk, lane) = simd_argmin_min_distance(&self.nearest.data, color).0;
-        self.add_sample_to(chunk, lane, color);
+        let index = simd_argmin_min_distance(&self.nearest.data, color).0;
+        self.add_sample_to(index, color);
     }
 
     fn online_kmeans(
@@ -253,7 +258,7 @@ where
         const BATCH_SIZE: u32 = 256;
 
         let samples = samples.get();
-        #[allow(clippy::expect_used)]
+        #[expect(clippy::expect_used, reason = "guarded by `Self::run`")]
         let distribution = Uniform::new(0, num_pixels).expect("num_pixels != 0");
         let rng = &mut Xoroshiro128PlusPlus::seed_from_u64(options.seed);
         let mut batch = Vec::with_capacity(BATCH_SIZE as usize);
@@ -542,7 +547,7 @@ mod parallel {
             let threads = rayon::current_num_threads();
             let chunk_size = (batch_size as usize).div_ceil(threads);
 
-            #[allow(clippy::expect_used)]
+            #[expect(clippy::expect_used, reason = "guarded by `Self::run`")]
             let distribution = Uniform::new(0, colors.len()).expect("num_pixels != 0");
             let mut rng = (0..threads)
                 .scan(Xoroshiro128PlusPlus::seed_from_u64(seed), |rng, _| {
@@ -552,13 +557,13 @@ mod parallel {
                 .collect::<Vec<_>>();
 
             let mut batch = vec![[0.0.as_(); N]; batch_size as usize];
-            let mut assignments = vec![(0, 0); batch_size as usize];
+            let mut assignments = vec![0; batch_size as usize];
 
             let colors = colors.as_arrays();
 
             let mut run = |state: &mut State<Color, Component, N>,
                            batch: &mut [[Component; N]],
-                           assignments: &mut [(u8, u8)],
+                           assignments: &mut [u8],
                            chunk_size| {
                 batch
                     .par_chunks_mut(chunk_size)
@@ -578,8 +583,8 @@ mod parallel {
                         }
                     });
 
-                for (color, &(chunk, lane)) in batch.iter().zip(&*assignments) {
-                    state.add_sample_to(chunk, lane, color.map(Into::into));
+                for (color, &index) in batch.iter().zip(&*assignments) {
+                    state.add_sample_to(index, color.map(Into::into));
                 }
             };
 
@@ -619,7 +624,7 @@ mod parallel {
             let threads = rayon::current_num_threads();
             let chunk_size = (batch_size as usize).div_ceil(threads);
 
-            #[allow(clippy::expect_used)]
+            #[expect(clippy::expect_used, reason = "guarded by `Self::run`")]
             let distribution = Uniform::new(0, image.num_pixels()).expect("num_pixels != 0");
             let mut rng = (0..threads)
                 .scan(Xoroshiro128PlusPlus::seed_from_u64(seed), |rng, _| {
@@ -629,14 +634,14 @@ mod parallel {
                 .collect::<Vec<_>>();
 
             let mut batch = vec![[0.0.as_(); N]; batch_size as usize];
-            let mut assignments = vec![(0, 0); batch_size as usize];
+            let mut assignments = vec![0; batch_size as usize];
 
             let colors = image.palette();
             let indices = image.indices();
 
             let mut run = |state: &mut State<Color, Component, N>,
                            batch: &mut [[Component; N]],
-                           assignments: &mut [(u8, u8)],
+                           assignments: &mut [u8],
                            chunk_size| {
                 batch
                     .par_chunks_mut(chunk_size)
@@ -657,8 +662,8 @@ mod parallel {
                         }
                     });
 
-                for (color, &(chunk, lane)) in batch.iter().zip(&*assignments) {
-                    state.add_sample_to(chunk, lane, color.map(Into::into));
+                for (color, &index) in batch.iter().zip(&*assignments) {
+                    state.add_sample_to(index, color.map(Into::into));
                 }
             };
 
@@ -685,14 +690,15 @@ mod parallel {
         f32: AsPrimitive<Component>,
     {
         /// Run kmeans in parallel on a slice of colors without checking that length is in bounds.
-        #[allow(clippy::cast_possible_truncation)]
         pub(crate) fn run_slice_par_unchecked(
             colors: &[Color],
             centroids: PaletteBuf<Color>,
             options: KmeansOptions,
         ) -> Self {
+            debug_assert!(u32::try_from(colors.len()).is_ok());
             Self::run(
-                colors.len() as u32,
+                #[expect(clippy::cast_possible_truncation, reason = "manually validated")]
+                (colors.len() as u32),
                 colors,
                 centroids,
                 options,
@@ -874,8 +880,12 @@ mod tests {
         let centroids = test_palette();
 
         let indices = {
-            #[allow(clippy::cast_possible_truncation)]
-            let indices = (0..centroids.len()).map(|i| i as u8).collect::<Vec<_>>();
+            let indices = (0..centroids.len())
+                .map(|i| {
+                    #[expect(clippy::cast_possible_truncation, reason = "PalettBuf length")]
+                    (i as u8)
+                })
+                .collect::<Vec<_>>();
             let mut indices = [indices.as_slice(); 4].concat();
             indices.rotate_right(7);
             indices

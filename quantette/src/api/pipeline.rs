@@ -267,8 +267,8 @@ pub struct PipelineWithSliceInput<'a> {
 }
 
 impl PipelineWithSliceInput<'_> {
+    #[expect(clippy::missing_panics_doc, reason = "expects should never trigger")]
     /// Runs the pipeline and returns the computed [`PaletteBuf<Oklab>`].
-    #[allow(clippy::missing_panics_doc)]
     #[must_use]
     pub fn output_oklab_palette(self) -> PaletteBuf<Oklab> {
         let Self { options, colors } = self;
@@ -287,12 +287,14 @@ impl PipelineWithSliceInput<'_> {
         if parallel {
             return match quantize_method {
                 QuantizeMethod::CustomPalette(palette) => palette.into_oklab(),
-                QuantizeMethod::Wu =>
-                {
-                    #[allow(clippy::expect_used)]
+                QuantizeMethod::Wu => {
                     if dedup.unwrap_or(colors.len() >= 2048 * 2048) {
                         let palette_counts = dedup::dedup_colors_u8_3_counts_bounded_par(colors)
                             .map(|palette| srgb8_to_oklab_par(&palette));
+                        #[expect(
+                            clippy::expect_used,
+                            reason = "colors is a BoundedSlice and guaranteed to be not empty"
+                        )]
                         WuF32x3::run_palette_counts_par(&palette_counts, binner)
                             .expect("deduping a non-empty slice to not result in an empty slice")
                             .palette(k)
@@ -307,7 +309,10 @@ impl PipelineWithSliceInput<'_> {
                         let image = ImageRef::new_unchecked(colors.length(), 1, colors);
                         let image = dedup::dedup_image_u8_3_counts_par(image)
                             .map(|palette| srgb8_to_oklab_par(&palette));
-                        #[allow(clippy::expect_used)]
+                        #[expect(
+                            clippy::expect_used,
+                            reason = "colors is a BoundedSlice and guaranteed to be not empty"
+                        )]
                         let centroids = WuF32x3::run_indexed_image_counts_par(&image, binner)
                             .expect("deduping a non-empty image to not result in an empty image")
                             .palette(k);
@@ -324,12 +329,14 @@ impl PipelineWithSliceInput<'_> {
 
         match quantize_method {
             QuantizeMethod::CustomPalette(palette) => palette.into_oklab(),
-            QuantizeMethod::Wu =>
-            {
-                #[allow(clippy::expect_used)]
+            QuantizeMethod::Wu => {
                 if dedup.unwrap_or(colors.len() >= 2048 * 2048) {
                     let palette_counts = dedup::dedup_colors_u8_3_counts_bounded(colors)
                         .map(|palette| srgb8_to_oklab(&palette));
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "colors is a BoundedSlice and guaranteed to be not empty"
+                    )]
                     WuF32x3::run_palette_counts(&palette_counts, binner)
                         .expect("deduping a non-empty slice to not result in an empty slice")
                         .palette(k)
@@ -345,7 +352,10 @@ impl PipelineWithSliceInput<'_> {
                     let image = ImageRef::new_unchecked(colors.length(), 1, colors);
                     let image = dedup::dedup_image_u8_3_counts(image)
                         .map(|palette| srgb8_to_oklab(&palette));
-                    #[allow(clippy::expect_used)]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "colors is a BoundedSlice and guaranteed to be not empty"
+                    )]
                     let centroids = WuF32x3::run_indexed_image_counts(&image, binner)
                         .expect("deduping a non-empty image to not result in an empty image")
                         .palette(k);
@@ -366,9 +376,10 @@ impl PipelineWithSliceInput<'_> {
         PaletteBuf::from_mapping(&self.output_oklab_palette(), oklab_to_srgb8)
     }
 
+    #[expect(clippy::missing_panics_doc, reason = "expects should never trigger")]
+    #[expect(clippy::too_many_lines, reason = "close enough")]
     /// Runs the pipeline and returns the computed [`PaletteBuf<Oklab>`] alongside the number of
     /// pixels or samples assigned to each palette color.
-    #[allow(clippy::missing_panics_doc)]
     #[must_use]
     pub fn output_oklab_palette_and_counts(self) -> (PaletteBuf<Oklab>, PaletteBuf<u32>) {
         let Self { options, colors } = self;
@@ -391,12 +402,14 @@ impl PipelineWithSliceInput<'_> {
                     let counts = PaletteBuf::new_unchecked(vec![0; palette.len()]);
                     (palette, counts)
                 }
-                QuantizeMethod::Wu =>
-                {
-                    #[allow(clippy::expect_used)]
+                QuantizeMethod::Wu => {
                     if dedup.unwrap_or(colors.len() >= 2048 * 2048) {
                         let palette_counts = dedup::dedup_colors_u8_3_counts_bounded_par(colors)
                             .map(|palette| srgb8_to_oklab_par(&palette));
+                        #[expect(
+                            clippy::expect_used,
+                            reason = "colors is a BoundedSlice and guaranteed to be not empty"
+                        )]
                         WuF32x3::run_palette_counts_par(&palette_counts, binner)
                             .expect("deduping a non-empty slice to not result in an empty slice")
                             .palette_and_counts(k)
@@ -411,7 +424,10 @@ impl PipelineWithSliceInput<'_> {
                         let image = ImageRef::new_unchecked(colors.length(), 1, colors);
                         let image = dedup::dedup_image_u8_3_counts_par(image)
                             .map(|palette| srgb8_to_oklab_par(&palette));
-                        #[allow(clippy::expect_used)]
+                        #[expect(
+                            clippy::expect_used,
+                            reason = "colors is a BoundedSlice and guaranteed to be not empty"
+                        )]
                         let centroids = WuF32x3::run_indexed_image_counts_par(&image, binner)
                             .expect("deduping a non-empty image to not result in an empty image")
                             .palette(k);
@@ -433,12 +449,14 @@ impl PipelineWithSliceInput<'_> {
                 let counts = PaletteBuf::new_unchecked(vec![0; palette.len()]);
                 (palette, counts)
             }
-            QuantizeMethod::Wu =>
-            {
-                #[allow(clippy::expect_used)]
+            QuantizeMethod::Wu => {
                 if dedup.unwrap_or(colors.len() >= 2048 * 2048) {
                     let palette_counts = dedup::dedup_colors_u8_3_counts_bounded(colors)
                         .map(|palette| srgb8_to_oklab(&palette));
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "colors is a BoundedSlice and guaranteed to be not empty"
+                    )]
                     WuF32x3::run_palette_counts(&palette_counts, binner)
                         .expect("deduping a non-empty slice to not result in an empty slice")
                         .palette_and_counts(k)
@@ -454,7 +472,10 @@ impl PipelineWithSliceInput<'_> {
                     let image = ImageRef::new_unchecked(colors.length(), 1, colors);
                     let image = dedup::dedup_image_u8_3_counts(image)
                         .map(|palette| srgb8_to_oklab(&palette));
-                    #[allow(clippy::expect_used)]
+                    #[expect(
+                        clippy::expect_used,
+                        reason = "colors is a BoundedSlice and guaranteed to be not empty"
+                    )]
                     let centroids = WuF32x3::run_indexed_image_counts(&image, binner)
                         .expect("deduping a non-empty image to not result in an empty image")
                         .palette(k);
@@ -806,7 +827,7 @@ impl<'a> PipelineWithImageRefInput<'a> {
         .unwrap_or_default()
     }
 
-    #[allow(clippy::type_complexity)]
+    #[expect(clippy::type_complexity, reason = "simple enough")]
     /// Runs the pipeline and returns the [`PaletteBuf<Srgb<u8>>`] and quantized [`ImageBuf<Srgb<u8>>`].
     ///
     /// Returns `None` if the input image was empty.

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, reason = "benchmark code")]
+
 #[path = "../util/mod.rs"]
 mod util;
 

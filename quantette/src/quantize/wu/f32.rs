@@ -6,7 +6,7 @@ use crate::{
 use alloc::{vec, vec::Vec};
 use core::{array, marker::PhantomData};
 use palette::cast::{self, AsArrays as _};
-use wide::{f32x8, i32x8, u32x8};
+use wide::{f32x8, u32x8};
 
 /// A histogram binner for colors consisting of 3 `f32` components.
 ///
@@ -33,7 +33,7 @@ impl<const B1: usize, const B2: usize, const B3: usize> BinnerF32x3<B1, B2, B3> 
             assert!(1 <= B3 && B3 <= u8::MAX as usize);
         }
         let [(l1, u1), (l2, u2), (l3, u3)] = ranges;
-        #[allow(clippy::cast_precision_loss)]
+        #[expect(clippy::cast_precision_loss, reason = "const assert above")]
         Self {
             mins: [l1, l2, l3],
             scale: [
@@ -70,40 +70,44 @@ impl<const B1: usize, const B2: usize, const B3: usize> BinnerF32x3<B1, B2, B3> 
     #[inline]
     fn bin(&self, components: [f32; 3]) -> [u8; 3] {
         let Self { mins, scale } = self;
-        let max_bins = [B1, B2, B3];
+        #[expect(clippy::cast_precision_loss, reason = "const assert on creation")]
+        let max_bins = [B1, B2, B3].map(|n| (n - 1) as f32);
         let mut bin = [0; 3];
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         for c in 0..3 {
-            bin[c] = (((components[c] - mins[c]) * scale[c]) as u8).min(max_bins[c] as u8 - 1);
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "clamp and const assert on creation"
+            )]
+            (bin[c] = ((components[c] - mins[c]) * scale[c]).clamp(0.0, max_bins[c]) as u8);
         }
         bin
     }
 
     /// Returns the flattened histogram bin index for a color.
-    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     fn index(&self, components: [f32; 3]) -> u32 {
         let [b1, b2, b3] = self.bin(components).map(u32::from);
-        b1 * B2 as u32 * B3 as u32 + b2 * B3 as u32 + b3
+        #[expect(clippy::cast_possible_truncation, reason = "const assert on creation")]
+        (b1 * B2 as u32 * B3 as u32 + b2 * B3 as u32 + b3)
     }
 
     /// Returns the flattened histogram bin indices for 8 colors at a time.
     #[inline]
     fn index8(&self, components: [f32x8; 3]) -> u32x8 {
         let Self { mins, scale } = self;
-        #[allow(clippy::cast_possible_truncation)]
-        let max_bins = [B1, B2, B3].map(|n| u32x8::splat((n - 1) as u32));
+        #[expect(clippy::cast_precision_loss, reason = "const assert on creation")]
+        let max_bins = [B1, B2, B3].map(|n| f32x8::splat((n - 1) as f32));
 
         let [b1, b2, b3] = array::from_fn(|i| {
-            let bins = (components[i] - mins[i]) * scale[i];
-            let bins = bins.trunc_int().max(i32x8::ZERO);
-            bins.cast_unsigned().min(max_bins[i])
+            ((components[i] - mins[i]) * scale[i])
+                .fast_clamp(f32x8::ZERO, max_bins[i])
+                .fast_trunc_int()
+                .cast_unsigned()
         });
 
-        #[allow(clippy::cast_possible_truncation)]
-        {
-            b1 * u32x8::splat(B2 as u32 * B3 as u32) + b2 * u32x8::splat(B3 as u32) + b3
-        }
+        #[expect(clippy::cast_possible_truncation, reason = "const assert on creation")]
+        (b1 * u32x8::splat(B2 as u32 * B3 as u32) + b2 * u32x8::splat(B3 as u32) + b3)
     }
 }
 
@@ -842,9 +846,11 @@ mod tests {
         };
 
         let indices = {
-            #[allow(clippy::cast_possible_truncation)]
             let indices = (0..expected_palette.len())
-                .map(|i| i as u8)
+                .map(|i| {
+                    #[expect(clippy::cast_possible_truncation, reason = "PalettBuf length")]
+                    (i as u8)
+                })
                 .collect::<Box<_>>();
             let mut indices = [indices.as_ref(); COUNT as usize].concat();
             indices.rotate_right(7);
@@ -922,7 +928,7 @@ mod tests {
             .zip(wu_par.hist.as_flattened())
         {
             assert_eq!(a.count, b.count);
-            #[allow(clippy::float_cmp)]
+            #[expect(clippy::float_cmp, reason = "test")]
             {
                 assert_eq!(a.components, b.components);
                 assert_eq!(a.sum_squared, b.sum_squared);

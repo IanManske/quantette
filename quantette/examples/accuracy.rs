@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::print_stdout, reason = "example code")]
+
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use image::{RgbImage, RgbaImage, buffer::ConvertBuffer as _};
 use palette::{Oklab, cast::IntoComponents as _};
@@ -128,7 +130,7 @@ fn main() {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[expect(clippy::too_many_lines, reason = "example code")]
 fn report(options: &Report) {
     fn each_image<F1, F2>(
         options: &Report,

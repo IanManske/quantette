@@ -115,6 +115,10 @@ where
         PaletteSubstitution { input, color_map, palette }
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "not sure a custom type will help here, as it would need 5 generics"
+    )]
     /// Replace the palette of a [`PaletteSubstitution`] to a different color type (or to new colors
     /// of the same type).
     ///
@@ -123,7 +127,6 @@ where
     /// If the length of the provided `palette` does not match the length of the current palette
     /// in the [`PaletteSubstitution`], then `self` and `palette` are returned as an `Err`.
     /// Otherwise, the new [`PaletteSubstitution`] is returned alongside the old palette.
-    #[allow(clippy::type_complexity)]
     #[inline]
     pub fn replace_palette<NewOutput>(
         self,

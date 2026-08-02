@@ -164,10 +164,10 @@ impl<Color, Index: BoundedIndex> IndexedImage<Color, Index> {
     }
 
     /// Returns the number of pixels in the [`IndexedImage`] specified by `width * height`.
-    #[allow(clippy::cast_possible_truncation)]
     #[inline]
     pub fn num_pixels(&self) -> u32 {
-        self.indices.len() as u32
+        #[expect(clippy::cast_possible_truncation, reason = "invariant")]
+        (self.indices.len() as u32)
     }
 
     /// Returns a slice of the palette colors of the [`IndexedImage`].
@@ -284,6 +284,10 @@ impl<Color, Index: BoundedIndex> IndexedImage<Color, Index> {
         }
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "not sure a custom type will help here, as it would need 3 generics"
+    )]
     /// Replace the palette of an [`IndexedImage`] to a different color type (or to new colors
     /// of the same type).
     ///
@@ -292,7 +296,6 @@ impl<Color, Index: BoundedIndex> IndexedImage<Color, Index> {
     /// If the length of the provided `palette` does not match the length of the current palette
     /// in the [`IndexedImage`], then `self` and `palette` are returned as an `Err`. Otherwise,
     /// the new [`IndexedImage`] is returned alongside the old palette.
-    #[allow(clippy::type_complexity)]
     #[inline]
     pub fn replace_palette<NewColor>(
         self,
@@ -738,6 +741,10 @@ impl<Color, Index: BoundedIndex> IndexedImageCounts<Color, Index> {
         (image, counts)
     }
 
+    #[expect(
+        clippy::type_complexity,
+        reason = "not sure a custom type will help here, as it would need 3 generics"
+    )]
     /// Replace the palette of an [`IndexedImageCounts`] to a different color type (or to new colors
     /// of the same type).
     ///
@@ -746,7 +753,6 @@ impl<Color, Index: BoundedIndex> IndexedImageCounts<Color, Index> {
     /// If the length of the provided `palette` does not match the length of the current palette
     /// in the [`IndexedImageCounts`], then `self` and `palette` are returned as an `Err`.
     /// Otherwise, the new [`IndexedImageCounts`] is returned alongside the old palette.
-    #[allow(clippy::type_complexity)]
     #[inline]
     pub fn replace_palette<NewColor>(
         self,
