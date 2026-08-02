@@ -41,7 +41,7 @@ fn cbrt(x: f32x8) -> f32x8 {
     // This eliminates additional code needed to handle infinity, subnormal numbers, etc.
     debug_assert!((x.simd_eq(0.0) | (x.simd_ge(f32::MIN_POSITIVE) & x.simd_le(1.0))).all());
 
-    let x_bits: u32x8 = bytemuck::cast(x);
+    let x_bits = x.to_bits();
     let sign = x_bits & u32x8::splat(0x80000000);
     let mut without_sign = x_bits & u32x8::splat(0x7fffffff);
     // compiler should vectorize this for us (wasm reverts to scalar unfortunately)
@@ -54,7 +54,7 @@ fn cbrt(x: f32x8) -> f32x8 {
     // Running Halley's Method for 2 iterations.
     // We use f32 instead of f64 for speed, sacrificing some precision.
     // Conversion from Srgb<u8> to Oklab still roundtrips.
-    let a: f32x8 = bytemuck::cast(x_bits);
+    let a = f32x8::from_bits(x_bits);
 
     let a3 = a * a * a;
     let a = a * (x + x + a3) / (x + a3 + a3);
@@ -62,7 +62,7 @@ fn cbrt(x: f32x8) -> f32x8 {
     let a3 = a * a * a;
     let a = a * (x + x + a3) / (x + a3 + a3);
 
-    x.simd_eq(0.0).blend(x, a)
+    x.simd_eq(0.0).select(x, a)
 }
 
 /// Convert [`LinSrgb`] to [`Oklab`] using SIMD.
