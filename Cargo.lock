@@ -339,9 +339,9 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "dssim"
-version = "3.4.0"
+version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eaa333e059ea555ff38041ef8245d9b9207a208ed221126a516b840a7a5562f"
+checksum = "405b5e1e4023bf04c65c56511bc3f8904df22bc73edbb985e03cb97f5d488b8d"
 dependencies = [
  "crossbeam-channel",
  "dssim-core",
@@ -356,12 +356,12 @@ dependencies = [
 
 [[package]]
 name = "dssim-core"
-version = "3.4.0"
+version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3c601412450ff29a9258b2f85b18b38f658caf70fad1692f40ca863d86cb753"
+checksum = "f2186fbf554f956fbd6206e3b2554978062558ace6572c317b34d0c03a2dbdff"
 dependencies = [
  "imgref",
- "itertools 0.14.0",
+ "itertools 0.15.0",
  "rayon",
  "rgb",
 ]
@@ -540,9 +540,9 @@ dependencies = [
 
 [[package]]
 name = "imgref"
-version = "1.12.2"
+version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "89194689a993ab15268672e99e7b0e19da2da3268ac682e8f02d29d4d1434cd7"
+checksum = "6e44b0a4eaa4c82f441d50a963f2d5f05a787240aeee097597033e72accfd22f"
 
 [[package]]
 name = "is_terminal_polyfill"
@@ -561,9 +561,9 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
