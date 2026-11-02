@@ -110,6 +110,21 @@ pub struct Image<Color, Container> {
 /// # Ok(())
 /// # }
 /// ```
+///
+/// The same conversions are supported between [`RgbaImage`](image::RgbaImage) and
+/// `ImageBuf<Srgba<u8>>`, for use with [`RgbaPipeline`](crate::RgbaPipeline):
+///
+/// ```
+/// # use quantette::{ImageBuf, CreateImageBufError};
+/// # use image::RgbaImage;
+/// # use palette::Srgba;
+/// # fn main() -> Result<(), CreateImageBufError<RgbaImage>> {
+/// let image = RgbaImage::new(256, 256);
+/// let image: ImageBuf<Srgba<u8>> = ImageBuf::try_from(image)?;
+/// let image: RgbaImage = image.into();
+/// # Ok(())
+/// # }
+/// ```
 pub type ImageBuf<Color> = Image<Color, Vec<Color>>;
 
 /// A borrowed image backed by a reference to a slice.
@@ -524,95 +539,116 @@ mod image_integration {
     use super::{CreateImageBufError, CreateImageError, Image, ImageBuf, ImageMut, ImageRef};
     use crate::LengthOutOfRange;
     use core::ops::{Deref, DerefMut};
-    use image::{ImageBuffer, Pixel, Rgb};
+    use image::{ImageBuffer, Pixel, Rgb, Rgba};
     use palette::{
-        ArrayExt, Srgb,
+        ArrayExt, Srgb, Srgba,
         cast::{
             ArrayCast, ComponentsAs as _, ComponentsAsMut as _, ComponentsInto as _,
             IntoComponents as _,
         },
     };
 
-    impl<Component> From<ImageBuf<Srgb<Component>>> for ImageBuffer<Rgb<Component>, Vec<Component>>
-    where
-        Srgb<Component>: ArrayCast,
-        <Srgb<Component> as ArrayCast>::Array: ArrayExt<Item = Component>,
-        Rgb<Component>: Pixel<Subpixel = Component>,
-        Vec<Component>: Deref<Target = [<Rgb<Component> as Pixel>::Subpixel]>,
-    {
-        fn from(image: ImageBuf<Srgb<Component>>) -> Self {
-            let Image { width, height, pixels, .. } = image;
-            #[expect(clippy::expect_used, reason = "invariant")]
-            ImageBuffer::from_raw(width, height, pixels.into_components())
-                .expect("buffer is large enough")
-        }
+    /// Creates an [`ImageBuffer`] from a buffer that is known to be large enough.
+    fn image_buffer_from_raw<P: Pixel>(
+        width: u32,
+        height: u32,
+        buffer: Vec<P::Subpixel>,
+    ) -> ImageBuffer<P, Vec<P::Subpixel>> {
+        #[expect(clippy::expect_used, reason = "invariant")]
+        ImageBuffer::from_raw(width, height, buffer).expect("buffer is large enough")
     }
 
-    impl<Component> TryFrom<ImageBuffer<Rgb<Component>, Vec<Component>>> for ImageBuf<Srgb<Component>>
-    where
-        Srgb<Component>: ArrayCast,
-        <Srgb<Component> as ArrayCast>::Array: ArrayExt<Item = Component>,
-        Rgb<Component>: Pixel<Subpixel = Component>,
-        Vec<Component>: Deref<Target = [<Rgb<Component> as Pixel>::Subpixel]>,
-    {
-        type Error = CreateImageBufError<ImageBuffer<Rgb<Component>, Vec<Component>>>;
-
-        fn try_from(
-            image: ImageBuffer<Rgb<Component>, Vec<Component>>,
-        ) -> Result<Self, Self::Error> {
-            let (width, height) = image.dimensions();
-            if let Some(len) = width.checked_mul(height) {
-                let mut buf = image.into_raw();
-                buf.truncate(len as usize * 3);
-                assert_eq!(buf.len(), len as usize * 3); // in case buf.len() < len * 3
-                let pixels = buf.components_into();
-                Ok(Self::new_unchecked(width, height, pixels))
-            } else {
-                let error = CreateImageError {
-                    width,
-                    height,
-                    length: image.pixels().len(),
-                };
-                Err(CreateImageBufError { error, buffer: image })
+    /// Implements conversions between an [`image`] crate pixel type and a [`palette`] color type
+    /// with the given number of channels.
+    macro_rules! impl_image_conversions {
+        ($pixel: ident, $color: ident, $channels: literal) => {
+            impl<Component> From<ImageBuf<$color<Component>>>
+                for ImageBuffer<$pixel<Component>, Vec<Component>>
+            where
+                $color<Component>: ArrayCast,
+                <$color<Component> as ArrayCast>::Array: ArrayExt<Item = Component>,
+                $pixel<Component>: Pixel<Subpixel = Component>,
+                Vec<Component>: Deref<Target = [<$pixel<Component> as Pixel>::Subpixel]>,
+            {
+                fn from(image: ImageBuf<$color<Component>>) -> Self {
+                    let Image { width, height, pixels, .. } = image;
+                    image_buffer_from_raw(width, height, pixels.into_components())
+                }
             }
-        }
+
+            impl<Component> TryFrom<ImageBuffer<$pixel<Component>, Vec<Component>>>
+                for ImageBuf<$color<Component>>
+            where
+                $color<Component>: ArrayCast,
+                <$color<Component> as ArrayCast>::Array: ArrayExt<Item = Component>,
+                $pixel<Component>: Pixel<Subpixel = Component>,
+                Vec<Component>: Deref<Target = [<$pixel<Component> as Pixel>::Subpixel]>,
+            {
+                type Error = CreateImageBufError<ImageBuffer<$pixel<Component>, Vec<Component>>>;
+
+                fn try_from(
+                    image: ImageBuffer<$pixel<Component>, Vec<Component>>,
+                ) -> Result<Self, Self::Error> {
+                    let (width, height) = image.dimensions();
+                    if let Some(len) = width.checked_mul(height) {
+                        let mut buf = image.into_raw();
+                        buf.truncate(len as usize * $channels);
+                        // in case buf.len() < len * $channels
+                        assert_eq!(buf.len(), len as usize * $channels);
+                        let pixels = buf.components_into();
+                        Ok(Self::new_unchecked(width, height, pixels))
+                    } else {
+                        let error = CreateImageError {
+                            width,
+                            height,
+                            length: image.pixels().len(),
+                        };
+                        Err(CreateImageBufError { error, buffer: image })
+                    }
+                }
+            }
+
+            impl<'a, Component, Container> TryFrom<&'a ImageBuffer<$pixel<Component>, Container>>
+                for ImageRef<'a, $color<Component>>
+            where
+                $pixel<Component>: Pixel<Subpixel = Component>,
+                Container: Deref<Target = [<$pixel<Component> as Pixel>::Subpixel]>,
+            {
+                type Error = LengthOutOfRange;
+
+                fn try_from(
+                    image: &'a ImageBuffer<$pixel<Component>, Container>,
+                ) -> Result<Self, Self::Error> {
+                    let (width, height) = image.dimensions();
+                    let len = LengthOutOfRange::check_dimensions(width, height)?;
+                    let slice = &image.as_raw()[..len as usize * $channels];
+                    let pixels = slice.components_as();
+                    Ok(Self::new_unchecked(width, height, pixels))
+                }
+            }
+
+            impl<'a, Component, Container>
+                TryFrom<&'a mut ImageBuffer<$pixel<Component>, Container>>
+                for ImageMut<'a, $color<Component>>
+            where
+                $pixel<Component>: Pixel<Subpixel = Component>,
+                Container: Deref<Target = [<$pixel<Component> as Pixel>::Subpixel]> + DerefMut,
+            {
+                type Error = LengthOutOfRange;
+
+                fn try_from(
+                    image: &'a mut ImageBuffer<$pixel<Component>, Container>,
+                ) -> Result<Self, Self::Error> {
+                    let (width, height) = image.dimensions();
+                    let len = LengthOutOfRange::check_dimensions(width, height)?;
+                    let slice = &mut image.deref_mut()[..len as usize * $channels];
+                    let pixels = slice.components_as_mut();
+                    Ok(Self::new_unchecked(width, height, pixels))
+                }
+            }
+        };
     }
 
-    impl<'a, Component, Container> TryFrom<&'a ImageBuffer<Rgb<Component>, Container>>
-        for ImageRef<'a, Srgb<Component>>
-    where
-        Rgb<Component>: Pixel<Subpixel = Component>,
-        Container: Deref<Target = [<Rgb<Component> as Pixel>::Subpixel]>,
-    {
-        type Error = LengthOutOfRange;
-
-        fn try_from(
-            image: &'a ImageBuffer<Rgb<Component>, Container>,
-        ) -> Result<Self, Self::Error> {
-            let (width, height) = image.dimensions();
-            let len = LengthOutOfRange::check_dimensions(width, height)?;
-            let slice = &image.as_raw()[..len as usize * 3];
-            let pixels = slice.components_as();
-            Ok(Self::new_unchecked(width, height, pixels))
-        }
-    }
-
-    impl<'a, Component, Container> TryFrom<&'a mut ImageBuffer<Rgb<Component>, Container>>
-        for ImageMut<'a, Srgb<Component>>
-    where
-        Rgb<Component>: Pixel<Subpixel = Component>,
-        Container: Deref<Target = [<Rgb<Component> as Pixel>::Subpixel]> + DerefMut,
-    {
-        type Error = LengthOutOfRange;
-
-        fn try_from(
-            image: &'a mut ImageBuffer<Rgb<Component>, Container>,
-        ) -> Result<Self, Self::Error> {
-            let (width, height) = image.dimensions();
-            let len = LengthOutOfRange::check_dimensions(width, height)?;
-            let slice = &mut image.deref_mut()[..len as usize * 3];
-            let pixels = slice.components_as_mut();
-            Ok(Self::new_unchecked(width, height, pixels))
-        }
-    }
+    impl_image_conversions!(Rgb, Srgb, 3);
+    impl_image_conversions!(Rgba, Srgba, 4);
 }

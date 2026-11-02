@@ -284,6 +284,107 @@ where
     }
 }
 
+/// A new type wrapper around a 4-dimensional array.
+#[repr(transparent)]
+#[derive(Debug, Clone)]
+pub struct Histogram4<T, const B1: usize, const B2: usize, const B3: usize, const B4: usize>(
+    pub Box<[[[[T; B4]; B3]; B2]; B1]>,
+);
+
+impl<T, const B1: usize, const B2: usize, const B3: usize, const B4: usize> Index<[u8; 4]>
+    for Histogram4<T, B1, B2, B3, B4>
+{
+    type Output = T;
+
+    #[inline]
+    fn index(&self, index: [u8; 4]) -> &Self::Output {
+        let [i, j, k, l] = index.map(usize::from);
+        &self.0[i][j][k][l]
+    }
+}
+
+impl<T, const B1: usize, const B2: usize, const B3: usize, const B4: usize> IndexMut<[u8; 4]>
+    for Histogram4<T, B1, B2, B3, B4>
+{
+    #[inline]
+    fn index_mut(&mut self, index: [u8; 4]) -> &mut Self::Output {
+        let [i, j, k, l] = index.map(usize::from);
+        &mut self.0[i][j][k][l]
+    }
+}
+
+impl<T, const B1: usize, const B2: usize, const B3: usize, const B4: usize>
+    Histogram4<T, B1, B2, B3, B4>
+where
+    T: Zero + Zeroable + PartialEq,
+{
+    /// Create a new [`Histogram4`] from zeroed memory.
+    pub fn new() -> Self {
+        const {
+            assert!(1 <= B1 && B1 <= u8::MAX as usize);
+            assert!(1 <= B2 && B2 <= u8::MAX as usize);
+            assert!(1 <= B3 && B3 <= u8::MAX as usize);
+            assert!(1 <= B4 && B4 <= u8::MAX as usize);
+        }
+        assert!(
+            T::zero() == T::zeroed(),
+            "the zero value for the component sum should be representable by the all zero byte pattern"
+        );
+        Self(bytemuck::zeroed_box())
+    }
+}
+
+impl<T, const B1: usize, const B2: usize, const B3: usize, const B4: usize>
+    Histogram4<T, B1, B2, B3, B4>
+{
+    /// Returns a flat, mutable slice of histogram bins.
+    #[inline]
+    pub fn as_flattened_mut(&mut self) -> &mut [T] {
+        self.0
+            .as_flattened_mut()
+            .as_flattened_mut()
+            .as_flattened_mut()
+    }
+}
+
+impl<T: Copy + AddAssign, const B1: usize, const B2: usize, const B3: usize, const B4: usize>
+    Histogram4<T, B1, B2, B3, B4>
+{
+    /// Create moments from the histogram bins to allow inclusion-exclusion lookups/calculations.
+    pub fn calc_cumulative_moments(&mut self) {
+        let hist = self.as_flattened_mut();
+        // Compute a prefix sum along each dimension, one dimension at a time.
+        for (stride, bins) in [(B2 * B3 * B4, B1), (B3 * B4, B2), (B4, B3), (1, B4)] {
+            for i in stride..hist.len() {
+                if (i / stride) % bins != 0 {
+                    let prev = hist[i - stride];
+                    hist[i] += prev;
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "threads")]
+impl<T, const B1: usize, const B2: usize, const B3: usize, const B4: usize>
+    Histogram4<T, B1, B2, B3, B4>
+where
+    T: AddAssign + Copy,
+{
+    #[expect(
+        clippy::needless_pass_by_value,
+        reason = "matches reduce type signature"
+    )]
+    /// Merge multiple [`Histogram4`]s together by element-wise summing their histogram bins together.
+    pub fn merge_partial(mut a: Self, b: Self) -> Self {
+        let b = b.0.as_flattened().as_flattened().as_flattened();
+        for (a, &b) in a.as_flattened_mut().iter_mut().zip(b) {
+            *a += b;
+        }
+        a
+    }
+}
+
 /// Trait for types that allow inclusion-exclusion lookups for any `N` dimensional slice.
 pub trait InclusionExclusion<T, const N: usize> {
     /// Returns the number of bins in each dimension.
@@ -367,6 +468,51 @@ where
                 }
                 #[expect(clippy::panic, reason = "bug")]
                 _ => panic!("dim must be < 3"),
+            }
+        }
+    }
+}
+
+impl<T, const B1: usize, const B2: usize, const B3: usize, const B4: usize> InclusionExclusion<T, 4>
+    for Histogram4<T, B1, B2, B3, B4>
+where
+    T: Copy + Zero + Add<Output = T> + Sub<Output = T>,
+{
+    fn dims(&self) -> [u8; 4] {
+        #[expect(clippy::cast_possible_truncation, reason = "const assert on creation")]
+        [B1, B2, B3, B4].map(|b| b as u8)
+    }
+
+    fn volume(&self, Cube { min, max }: Cube<4>) -> T {
+        let mut index = [0u8; 4];
+        ndvolume!(self, min, max, index; 0, 1, 2, 3)
+    }
+
+    fn volume_at(&self, Cube { min, max }: Cube<4>, dim: u8, bin: u8) -> T {
+        if bin == 0 {
+            Zero::zero()
+        } else {
+            let bin = bin - 1;
+            let mut index = [0u8; 4];
+            match dim {
+                0 => {
+                    index[0] = bin;
+                    ndvolume!(self, min, max, index; 1, 2, 3)
+                }
+                1 => {
+                    index[1] = bin;
+                    ndvolume!(self, min, max, index; 0, 2, 3)
+                }
+                2 => {
+                    index[2] = bin;
+                    ndvolume!(self, min, max, index; 0, 1, 3)
+                }
+                3 => {
+                    index[3] = bin;
+                    ndvolume!(self, min, max, index; 0, 1, 2)
+                }
+                #[expect(clippy::panic, reason = "bug")]
+                _ => panic!("dim must be < 4"),
             }
         }
     }

@@ -1,6 +1,6 @@
 # Benchmarks and Accuracy
 
-Below are some comparisons between `quantette` and some other libraries. Each library has different situations and/or options that can make them perform better or worse, but these limited comparisons should give a rough point of reference. Note that `quantette` currently doesn't support alpha channel/component, while the other libraries do.
+Below are some comparisons between `quantette` and some other libraries. Each library has different situations and/or options that can make them perform better or worse, but these limited comparisons should give a rough point of reference. The sections below cover opaque images using `Pipeline`. See [Images with Transparency](#images-with-transparency) for images with an alpha channel using `RgbaPipeline`.
 
 # Setup
 
@@ -135,3 +135,120 @@ All results below are for 256 colors, and the `-C target-feature=+avx2` `rustc` 
 | Rosetta Nebula       | 1920x1280  | 0.001061   | 0.000825 | 0.001316   | 0.001208 |
 | Termas Geometricas   | 1920x1280  | 0.001115   | 0.000779 | 0.001071   | 0.001213 |
 | Yosemite Tunnel View | 1920x1280  | 0.001072   | 0.000762 | 0.000977   | 0.001168 |
+
+# Images with Transparency
+
+The results below compare `quantette`'s `RgbaPipeline` against other libraries that support an alpha channel. The images used can be found in [img/alpha/](../img/alpha/), which includes photo cutouts, illustrations, logos, 3D renders, emoji, and images with smooth alpha fades.
+
+The settings and libraries being compared are:
+
+- `Wu`: `RgbaPipeline` using `RgbaQuantizeMethod::Wu`.
+- `k-means`: `RgbaPipeline` using `RgbaQuantizeMethod::kmeans()` (the default).
+- `imagequant` version `4.4.1` run with the default library options.
+- `color_quant` version `1.1.0` (NeuQuant) run with a `sample_frac` of `1`.
+- `exoquant` version `0.2.0` run without k-means optimization.
+
+The "DSSIM" tables list the DSSIM values as reported by the `report-alpha` command of the `accuracy` binary found in [`examples/`](../examples/), which compares images with their alpha channel. The "Time" tables provide the total time, in milliseconds, for quantization and remapping as reported by the `cli` binary in [`examples/`](../examples/) with the `--verbose` and (for `quantette`) `--alpha` flags, using 4 threads. Each time is the minimum of 10 runs on an Apple M2 Max.
+
+All tables below are for 256 colors. The summary table below covers 16, 64, and 256 colors, comparing each `quantette` method against `imagequant` across the 15 images:
+
+| Dithering         | Colors | Method  | Images with lower DSSIM than imagequant | Mean DSSIM relative to imagequant |
+|:------------------|:-------|:--------|:----------------------------------------|:----------------------------------|
+| Without dithering | 16     | Wu      | 10 / 15                                 | 0.97                              |
+| Without dithering | 16     | k-means | 13 / 15                                 | 0.90                              |
+| Without dithering | 64     | Wu      | 8 / 15                                  | 1.10                              |
+| Without dithering | 64     | k-means | 14 / 15                                 | 0.86                              |
+| Without dithering | 256    | Wu      | 6 / 15                                  | 2.10                              |
+| Without dithering | 256    | k-means | 13 / 15                                 | 0.90                              |
+| With dithering    | 16     | Wu      | 6 / 15                                  | 1.02                              |
+| With dithering    | 16     | k-means | 11 / 15                                 | 0.90                              |
+| With dithering    | 64     | Wu      | 8 / 15                                  | 1.06                              |
+| With dithering    | 64     | k-means | 14 / 15                                 | 0.82                              |
+| With dithering    | 256    | Wu      | 7 / 15                                  | 1.64                              |
+| With dithering    | 256    | k-means | 14 / 15                                 | 0.78                              |
+
+Note that for generated palettes, `RgbaPipeline` always maps fully opaque pixels to fully opaque palette colors and fully transparent pixels to fully transparent palette colors (even with dithering), so opaque regions of an image stay opaque and transparent regions stay transparent. The other libraries do not necessarily guarantee this.
+
+## Without Dithering
+
+### Time
+
+| Image               | Dimensions | Wu  | k-means | imagequant |
+|:--------------------|:-----------|:----|:--------|:-----------|
+| brown_rat           | 1151x1093  | 23  | 31      | 19         |
+| carnival_mask       | 1612x2400  | 129 | 166     | 237        |
+| cosmic_vista_fade   | 768x512    | 56  | 111     | 113        |
+| crystal_ball        | 256x256    | 5   | 32      | 7          |
+| cygnus_patch        | 1960x1960  | 71  | 110     | 66         |
+| dna                 | 800x600    | 11  | 40      | 13         |
+| fire                | 256x256    | 5   | 35      | 9          |
+| fruits_vignette     | 768x512    | 54  | 106     | 101        |
+| ghost               | 256x256    | 5   | 27      | 7          |
+| glowing_star        | 256x256    | 7   | 21      | 6          |
+| jellyfish           | 256x256    | 6   | 36      | 9          |
+| king_penguin_cutout | 768x512    | 42  | 115     | 56         |
+| owls                | 622x527    | 38  | 54      | 40         |
+| protein             | 1098x1048  | 31  | 52      | 50         |
+| rainbow             | 256x256    | 4   | 25      | 5          |
+
+### DSSIM
+
+| Image               | Dimensions | Wu       | k-means  | imagequant | color_quant | exoquant |
+|:--------------------|:-----------|:---------|:---------|:-----------|:------------|:---------|
+| brown_rat           | 1151x1093  | 0.000066 | 0.000004 | 0.000005   | 0.000012    | 0.00037  |
+| carnival_mask       | 1612x2400  | 0.001549 | 0.001531 | 0.001556   | 0.002235    | 0.003177 |
+| cosmic_vista_fade   | 768x512    | 0.003234 | 0.003178 | 0.004087   | 0.007856    | 0.006068 |
+| crystal_ball        | 256x256    | 0.001289 | 0.000305 | 0.000335   | 0.000665    | 0.001    |
+| cygnus_patch        | 1960x1960  | 0.000009 | 0.00001  | 0.000009   | 0.000017    | 0.000314 |
+| dna                 | 800x600    | 0.000029 | 0.000026 | 0.000022   | 0.000083    | 0.000043 |
+| fire                | 256x256    | 0.001773 | 0.000299 | 0.000325   | 0.000677    | 0.001022 |
+| fruits_vignette     | 768x512    | 0.006812 | 0.00675  | 0.00806    | 0.015141    | 0.012409 |
+| ghost               | 256x256    | 0.001539 | 0.000225 | 0.000256   | 0.000519    | 0.001466 |
+| glowing_star        | 256x256    | 0.000436 | 0.000048 | 0.000052   | 0.000181    | 0.00046  |
+| jellyfish           | 256x256    | 0.000484 | 0.00022  | 0.000223   | 0.000426    | 0.000712 |
+| king_penguin_cutout | 768x512    | 0.001337 | 0.001093 | 0.001173   | 0.003082    | 0.004443 |
+| owls                | 622x527    | 0.000436 | 0.000426 | 0.000496   | 0.000834    | 0.000868 |
+| protein             | 1098x1048  | 0.00109  | 0.001099 | 0.001788   | 0.003033    | 0.003033 |
+| rainbow             | 256x256    | 0.000586 | 0.000135 | 0.000139   | 0.000486    | 0.001053 |
+
+## With Dithering
+
+### Time
+
+| Image               | Dimensions | Wu  | k-means | imagequant |
+|:--------------------|:-----------|:----|:--------|:-----------|
+| brown_rat           | 1151x1093  | 97  | 75      | 25         |
+| carnival_mask       | 1612x2400  | 254 | 294     | 306        |
+| cosmic_vista_fade   | 768x512    | 74  | 135     | 130        |
+| crystal_ball        | 256x256    | 13  | 37      | 8          |
+| cygnus_patch        | 1960x1960  | 207 | 244     | 79         |
+| dna                 | 800x600    | 32  | 58      | 16         |
+| fire                | 256x256    | 14  | 45      | 11         |
+| fruits_vignette     | 768x512    | 72  | 124     | 120        |
+| ghost               | 256x256    | 14  | 36      | 8          |
+| glowing_star        | 256x256    | 15  | 32      | 7          |
+| jellyfish           | 256x256    | 13  | 37      | 9          |
+| king_penguin_cutout | 768x512    | 46  | 82      | 56         |
+| owls                | 622x527    | 33  | 57      | 47         |
+| protein             | 1098x1048  | 71  | 93      | 74         |
+| rainbow             | 256x256    | 13  | 30      | 6          |
+
+### DSSIM
+
+| Image               | Dimensions | Wu       | k-means  | imagequant | exoquant |
+|:--------------------|:-----------|:---------|:---------|:-----------|:---------|
+| brown_rat           | 1151x1093  | 0.000097 | 0.000004 | 0.000005   | 0.000526 |
+| carnival_mask       | 1612x2400  | 0.001066 | 0.001046 | 0.001298   | 0.002506 |
+| cosmic_vista_fade   | 768x512    | 0.002192 | 0.00227  | 0.003244   | 0.004491 |
+| crystal_ball        | 256x256    | 0.00062  | 0.000205 | 0.000285   | 0.000657 |
+| cygnus_patch        | 1960x1960  | 0.000009 | 0.000009 | 0.000009   | 0.002109 |
+| dna                 | 800x600    | 0.000027 | 0.000024 | 0.000022   | 0.000068 |
+| fire                | 256x256    | 0.000775 | 0.000181 | 0.000244   | 0.000849 |
+| fruits_vignette     | 768x512    | 0.003661 | 0.003435 | 0.004796   | 0.006627 |
+| ghost               | 256x256    | 0.000807 | 0.000145 | 0.000216   | 0.001249 |
+| glowing_star        | 256x256    | 0.000243 | 0.000041 | 0.000052   | 0.001385 |
+| jellyfish           | 256x256    | 0.000271 | 0.000154 | 0.000177   | 0.000595 |
+| king_penguin_cutout | 768x512    | 0.000845 | 0.000783 | 0.000894   | 0.003914 |
+| owls                | 622x527    | 0.000353 | 0.000332 | 0.000483   | 0.000791 |
+| protein             | 1098x1048  | 0.000713 | 0.000743 | 0.00115    | 0.002255 |
+| rainbow             | 256x256    | 0.000281 | 0.000094 | 0.000132   | 0.001509 |

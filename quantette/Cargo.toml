@@ -100,6 +100,11 @@ name = "pipeline"
 harness = false
 path = "benches/pipeline.rs"
 
+[[bench]]
+name = "rgba"
+harness = false
+path = "benches/rgba.rs"
+
 [[package.metadata.docs.rs]]
 all-features = true
 

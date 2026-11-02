@@ -4,7 +4,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use image::{RgbImage, RgbaImage, buffer::ConvertBuffer as _};
 use palette::{Oklab, cast::IntoComponents as _};
 use quantette::{
-    Image, IndexedImageCounts, PaletteSize,
+    Image, IndexedImageCounts, PaletteSize, RgbaPipeline, RgbaQuantizeMethod,
     color_map::{IndexedColorMap, PaletteSubstitution},
     color_space::{oklab_to_srgb8, srgb8_to_oklab_par},
     dedup,
@@ -88,10 +88,43 @@ impl Report {
     }
 }
 
+/// Set of algorithm choices for images with an alpha channel
+#[derive(Debug, Copy, Clone, ValueEnum)]
+enum AlphaAlgorithm {
+    Wu,
+    Kmeans,
+    Neuquant,
+    Exoquant,
+    Imagequant,
+}
+
+#[derive(Args)]
+struct AlphaReport {
+    #[arg(short, long, value_enum, default_value_t = AlphaAlgorithm::Kmeans)]
+    algo: AlphaAlgorithm,
+
+    #[arg(short, long, default_value = "16,64,256", value_delimiter = ',', value_parser = parse_palette_size)]
+    k: Vec<PaletteSize>,
+
+    #[arg(long, default_value_t = 1)]
+    sample_frac: u8,
+
+    #[arg(long)]
+    dither: bool,
+
+    /// Images to use instead of the images in `img/alpha`
+    images: Vec<PathBuf>,
+}
+
 #[derive(Subcommand)]
 enum Command {
     Report(Report),
-    Compare { image_a: PathBuf, image_b: PathBuf },
+    /// Report the accuracy of quantizing images with an alpha channel
+    ReportAlpha(AlphaReport),
+    Compare {
+        image_a: PathBuf,
+        image_b: PathBuf,
+    },
 }
 
 #[derive(Parser)]
@@ -113,6 +146,7 @@ fn main() {
 
     match command {
         Command::Report(options) => report(&options),
+        Command::ReportAlpha(options) => report_alpha(&options),
         Command::Compare { image_a, image_b } => {
             let ds = dssim::new();
             let a = image::open(image_a).unwrap().into_rgb8();
@@ -369,6 +403,155 @@ fn report(options: &Report) {
                         .collect()
                 }
             });
+        }
+    }
+}
+
+fn report_alpha(options: &AlphaReport) {
+    let images = if options.images.is_empty() {
+        util::load_rgba_image_dir_relative_to_root(
+            ["img", "alpha", "img"].into_iter().collect::<PathBuf>(),
+        )
+        .into_iter()
+        .map(|(path, img)| {
+            let name = path.file_stem().and_then(OsStr::to_str).unwrap().to_owned();
+            (name, img)
+        })
+        .collect::<Vec<_>>()
+    } else {
+        options
+            .images
+            .iter()
+            .map(|path| path.display().to_string())
+            .zip(util::load_rgba_images(&options.images))
+            .collect()
+    };
+
+    if options.dither && matches!(options.algo, AlphaAlgorithm::Neuquant) {
+        println!("neuquant does not support dithering");
+        return;
+    }
+
+    // use char count as supplement for grapheme count
+    let max_name_len = images
+        .iter()
+        .map(|(name, _)| name.chars().count())
+        .max()
+        .unwrap_or(0);
+
+    println!(
+        "{:max_name_len$} {}",
+        "image",
+        options
+            .k
+            .iter()
+            .map(|k| format!(
+                "{:>1$} {2}",
+                k,
+                COL_WIDTH - NUM_DECIMALS - 1,
+                str::repeat(" ", NUM_DECIMALS)
+            ))
+            .collect::<Vec<_>>()
+            .join(" "),
+    );
+
+    let ds = dssim::new();
+    for (name, image) in images {
+        let (width, height) = (image.width() as usize, image.height() as usize);
+        let original = ds
+            .create_image_rgba(image.as_rgba(), width, height)
+            .unwrap();
+
+        let ssim_by_k = options
+            .k
+            .iter()
+            .map(|&k| {
+                let quantized = quantize_alpha(options, &image, k);
+                let quantized = ds.create_image_rgba(&quantized, width, height).unwrap();
+                let ssim = 100.0 * f64::from(ds.compare(&original, quantized).0);
+                format!("{ssim:>COL_WIDTH$.NUM_DECIMALS$}")
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        println!("{name:max_name_len$} {ssim_by_k}");
+    }
+}
+
+fn quantize_alpha(options: &AlphaReport, image: &RgbaImage, k: PaletteSize) -> Vec<RGBA<u8>> {
+    match options.algo {
+        AlphaAlgorithm::Wu | AlphaAlgorithm::Kmeans => {
+            let method = if matches!(options.algo, AlphaAlgorithm::Wu) {
+                RgbaQuantizeMethod::Wu
+            } else {
+                RgbaQuantizeMethod::kmeans()
+            };
+            let image = Image::try_from(image).unwrap();
+            let quantized = RgbaPipeline::new()
+                .palette_size(k)
+                .quantize_method(method)
+                .ditherer(options.dither.then(FloydSteinberg::new))
+                .parallel(true)
+                .input_image(image)
+                .output_srgba8_image();
+            bytemuck::cast_vec(quantized.into_inner().into_components())
+        }
+        AlphaAlgorithm::Neuquant => {
+            let nq = color_quant::NeuQuant::new(options.sample_frac.into(), k.into(), image);
+            let colors = nq.color_map_rgba();
+            let colors = colors.as_rgba();
+            image
+                .chunks_exact(4)
+                .map(|pix| colors[nq.index_of(pix)])
+                .collect()
+        }
+        AlphaAlgorithm::Exoquant => {
+            use exoquant::{Color, convert_to_indexed, ditherer, optimizer};
+
+            let pixels = image
+                .pixels()
+                .map(|p| Color::new(p.0[0], p.0[1], p.0[2], p.0[3]))
+                .collect::<Vec<_>>();
+            let width = image.width() as usize;
+            let (colors, indices) = if options.dither {
+                convert_to_indexed(
+                    &pixels,
+                    width,
+                    k.into(),
+                    &optimizer::None,
+                    &ditherer::FloydSteinberg::new(),
+                )
+            } else {
+                convert_to_indexed(&pixels, width, k.into(), &optimizer::None, &ditherer::None)
+            };
+            indices
+                .into_iter()
+                .map(|i| {
+                    let c = colors[usize::from(i)];
+                    RGBA::new(c.r, c.g, c.b, c.a)
+                })
+                .collect()
+        }
+        AlphaAlgorithm::Imagequant => {
+            let mut libq = imagequant::new();
+            let mut img = libq
+                .new_image(
+                    image.as_rgba(),
+                    image.width() as usize,
+                    image.height() as usize,
+                    0.0,
+                )
+                .unwrap();
+            libq.set_max_colors(k.as_u16().into()).unwrap();
+            let mut quantized = libq.quantize(&mut img).unwrap();
+            quantized
+                .set_dithering_level(if options.dither { 1.0 } else { 0.0 })
+                .unwrap();
+            let (colors, indices) = quantized.remapped(&mut img).unwrap();
+            indices
+                .into_iter()
+                .map(|i| colors[usize::from(i)])
+                .collect()
         }
     }
 }
