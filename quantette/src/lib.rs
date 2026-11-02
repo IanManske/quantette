@@ -1,6 +1,7 @@
 //! A library for fast and high quality image quantization and palette generation.
 //!
 //! To get started, see the [`Pipeline`] builder struct which serves as the high-level API.
+//! For images with transparency, see the [`RgbaPipeline`] builder struct instead.
 //! Otherwise, manually compose functions from the other exported modules to suit your needs.
 //!
 //! # Features

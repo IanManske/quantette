@@ -76,7 +76,7 @@ fn cbrt(x: f32x8) -> f32x8 {
 )]
 /// Convert [`LinSrgb`] to [`Oklab`] using SIMD.
 #[inline(always)]
-fn lin_srgb_to_oklab(lin_srgb: LinSrgb<f32x8>) -> Oklab<f32x8> {
+pub(crate) fn lin_srgb_to_oklab(lin_srgb: LinSrgb<f32x8>) -> Oklab<f32x8> {
     let (r, g, b) = lin_srgb.into_components();
 
     let l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;

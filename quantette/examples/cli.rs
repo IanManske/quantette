@@ -1,10 +1,10 @@
 #![allow(clippy::unwrap_used, clippy::print_stdout, reason = "example code")]
 
 use clap::{Parser, Subcommand};
-use image::RgbImage;
+use image::{RgbImage, RgbaImage};
 use palette::Srgb;
 use quantette::{
-    Image, IndexedImage, PaletteSize, Pipeline, QuantizeMethod,
+    Image, IndexedImage, PaletteSize, Pipeline, QuantizeMethod, RgbaPipeline, RgbaQuantizeMethod,
     dither::FloydSteinberg,
     kmeans::KmeansOptions,
     wu::{BinnerU8x3, WuU8x3},
@@ -20,6 +20,10 @@ enum Quantizer {
 
         #[arg(long)]
         srgb: bool,
+
+        /// Preserve the alpha channel using `RgbaPipeline`
+        #[arg(long)]
+        alpha: bool,
 
         #[arg(long)]
         kmeans: bool,
@@ -105,6 +109,73 @@ fn main() {
 
     match quantizer {
         Quantizer::Quantette {
+            alpha: true,
+            srgb,
+            dedup,
+            dither,
+            dither_error_diffusion,
+            kmeans,
+            threads,
+            ..
+        } => {
+            if srgb || dedup.is_some() {
+                #[expect(clippy::unimplemented, reason = "example code")]
+                (unimplemented!("--srgb and --dedup are not compatible with --alpha"));
+            }
+
+            let image = Image::try_from(image.into_rgba8()).unwrap();
+
+            let method = if kmeans {
+                RgbaQuantizeMethod::kmeans()
+            } else {
+                RgbaQuantizeMethod::Wu
+            };
+
+            let parallel = threads != 1;
+            let pool = rayon::ThreadPoolBuilder::new()
+                .num_threads(if parallel { threads.into() } else { 0 })
+                .build()
+                .unwrap();
+
+            let pipeline = RgbaPipeline::new()
+                .quantize_method(method)
+                .palette_size(k)
+                .ditherer(
+                    dither
+                        .then_some(FloydSteinberg::with_error_diffusion(dither_error_diffusion))
+                        .flatten(),
+                )
+                .parallel(parallel);
+
+            if let Some(output) = output {
+                let image: RgbaImage = log!(
+                    "quantization and remapping",
+                    pool.install(|| pipeline
+                        .input_image(image.as_ref())
+                        .output_srgba8_image()
+                        .into())
+                );
+                log!("write image", image.save(output).unwrap())
+            } else {
+                let colors = log!(
+                    "quantization",
+                    pool.install(|| pipeline
+                        .input_slice(image.as_slice())
+                        .unwrap()
+                        .output_srgba8_palette())
+                );
+                println!(
+                    "{}",
+                    colors
+                        .iter()
+                        .map(|color| format!("{color:X}"))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+            }
+        }
+        Quantizer::Quantette {
+            alpha: false,
             srgb: false,
             dedup,
             dither,
@@ -164,6 +235,7 @@ fn main() {
             }
         }
         Quantizer::Quantette {
+            alpha: false,
             srgb: true,
             dedup,
             dither,

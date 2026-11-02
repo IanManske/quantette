@@ -1,7 +1,7 @@
 #![allow(dead_code, clippy::unwrap_used, reason = "benchmark code")]
 
-use image::RgbImage;
-use palette::{Oklab, Srgb};
+use image::{RgbImage, RgbaImage};
+use palette::{Oklab, Srgb, Srgba};
 use quantette::{ImageBuf, IndexedImageCounts, color_space::srgb8_to_oklab_par, dedup};
 use std::{
     cmp::Reverse,
@@ -16,6 +16,48 @@ pub fn load_images<P: AsRef<Path>>(images: &[P]) -> Vec<RgbImage> {
         .iter()
         .map(|path| image::open(path).unwrap().into_rgb8())
         .collect()
+}
+
+pub fn load_rgba_images<P: AsRef<Path>>(images: &[P]) -> Vec<RgbaImage> {
+    images
+        .iter()
+        .map(|path| image::open(path).unwrap().into_rgba8())
+        .collect()
+}
+
+fn sorted_dir_paths(dir: impl AsRef<Path>) -> Vec<PathBuf> {
+    let mut paths = fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect::<Vec<_>>();
+
+    paths.sort_unstable();
+    paths
+}
+
+pub fn load_rgba_image_dir_relative_to_root(dir: impl AsRef<Path>) -> Vec<(PathBuf, RgbaImage)> {
+    let mut root = root_dir();
+    root.push(dir);
+    let paths = sorted_dir_paths(root);
+    let images = load_rgba_images(&paths);
+    paths.into_iter().zip(images).collect()
+}
+
+static ALPHA_BENCHMARK_IMAGES: OnceLock<Vec<(String, ImageBuf<Srgba<u8>>)>> = OnceLock::new();
+
+/// Returns the images in the `img/alpha` dataset.
+pub fn alpha_benchmark_images() -> &'static [(String, ImageBuf<Srgba<u8>>)] {
+    ALPHA_BENCHMARK_IMAGES.get_or_init(|| {
+        load_rgba_image_dir_relative_to_root(
+            ["img", "alpha", "img"].into_iter().collect::<PathBuf>(),
+        )
+        .into_iter()
+        .map(|(path, img)| {
+            let name = path.file_stem().and_then(OsStr::to_str).unwrap().to_owned();
+            (name, img.try_into().unwrap())
+        })
+        .collect()
+    })
 }
 
 pub fn load_image_dir(dir: impl AsRef<Path>) -> Vec<(PathBuf, RgbImage)> {

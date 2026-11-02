@@ -1,3 +1,9 @@
+# Unreleased
+
+- Added support for images with an alpha channel via the new `RgbaPipeline` builder struct (alongside `RgbaPipelineWithImageRefInput`, `RgbaPipelineWithSliceInput`, and `RgbaQuantizeMethod`). Colors are compared by how they look composited over both black and white backgrounds in the Oklab color space, and fully opaque and fully transparent pixels are preserved.
+- Added conversions between `image::RgbaImage` and `ImageBuf<Srgba<u8>>` (and the corresponding `ImageRef` and `ImageMut` conversions) when the `image` feature is enabled.
+- Added a benchmark dataset of images with an alpha channel in `img/alpha`, as well as a `report-alpha` command to the `accuracy` example and an `--alpha` flag to the `cli` example.
+
 # v0.6.0
 
 - Added `output_srgb8_palette_and_image` and `output_oklab_palette_and_image` methods to the `Pipeline` struct.
